@@ -1,10 +1,13 @@
 import { Stack } from "expo-router";
+import { ThemeProvider } from "../contexts/ThemeContext";
 
 export default function RootLayout() {
   return (
-    <Stack>
-      <Stack.Screen name="(tabs)" options={{ headerShown: false}}/>
-      <Stack.Screen name="+not-found" options = {{title: "Fallback"}} />
-    </Stack>
+    <ThemeProvider>
+      <Stack>
+        <Stack.Screen name="(tabs)" options={{ headerShown: false}}/>
+        <Stack.Screen name="+not-found" options = {{title: "Fallback"}} />
+      </Stack>
+    </ThemeProvider>
   )
 }

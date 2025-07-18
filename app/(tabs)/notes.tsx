@@ -1,20 +1,1092 @@
-import * as React from 'react';
-import {View, Text, StyleSheet, Pressable, Image} from 'react-native';
-import { useRouter, Stack } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useState } from 'react';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
+} from 'react-native';
+import { useTheme } from '../../contexts/ThemeContext';
 
-export default function Workout() {
-    return (
-        <View>
-            <Text style={styles.text}>
-                Hello World
-            </Text>
-        </View>
-    )
+interface Exercise {
+  id: string;
+  name: string;
+  sets: number;
+  reps: number;
+  weight: number;
 }
 
-const styles = StyleSheet.create({
-    text: {
-        color: "darkviolet",
+interface Workout {
+  id: string;
+  date: string;
+  exercises: Exercise[];
+  duration: number;
+}
 
+export default function WorkoutTracker() {
+  const { theme } = useTheme();
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [currentWorkout, setCurrentWorkout] = useState<Exercise[]>([]);
+  const [isWorkoutActive, setIsWorkoutActive] = useState(false);
+  const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
+  const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showWorkoutHistory, setShowWorkoutHistory] = useState(false);
+  const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
+  const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
+  const [exerciseTypes, setExerciseTypes] = useState<any[]>([]);
+  const [showEditExercise, setShowEditExercise] = useState(false);
+  const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  
+  // Form states
+  const [exerciseName, setExerciseName] = useState('');
+  const [sets, setSets] = useState('');
+  const [reps, setReps] = useState('');
+  const [weight, setWeight] = useState('');
+
+  useEffect(() => {
+    loadWorkouts();
+    loadExerciseTypes();
+  }, []);
+
+  const loadWorkouts = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('workouts');
+      if (stored) {
+        setWorkouts(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading workouts:', error);
     }
+  };
+
+  const saveWorkouts = async (newWorkouts: Workout[]) => {
+    try {
+      await AsyncStorage.setItem('workouts', JSON.stringify(newWorkouts));
+      setWorkouts(newWorkouts);
+    } catch (error) {
+      console.error('Error saving workouts:', error);
+    }
+  };
+
+  const startWorkout = () => {
+    setIsWorkoutActive(true);
+    setWorkoutStartTime(new Date());
+    setCurrentWorkout([]);
+  };
+
+  const addExercise = () => {
+    if (!exerciseName || !sets || !reps || !weight) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const newExercise: Exercise = {
+      id: Date.now().toString(),
+      name: exerciseName,
+      sets: parseInt(sets),
+      reps: parseInt(reps),
+      weight: parseFloat(weight)
+    };
+
+    setCurrentWorkout([...currentWorkout, newExercise]);
+    setExerciseName('');
+    setSets('');
+    setReps('');
+    setWeight('');
+    setShowAddExercise(false);
+  };
+
+
+
+  const finishWorkout = () => {
+    if (currentWorkout.length === 0) {
+      Alert.alert('Error', 'Add at least one exercise to finish workout');
+      return;
+    }
+
+    const duration = workoutStartTime 
+      ? Math.round((new Date().getTime() - workoutStartTime.getTime()) / 60000)
+      : 0;
+
+    const newWorkout: Workout = {
+      id: Date.now().toString(),
+      date: new Date().toISOString(),
+      exercises: currentWorkout,
+      duration
+    };
+
+    const updatedWorkouts = [newWorkout, ...workouts];
+    saveWorkouts(updatedWorkouts);
+    
+    setIsWorkoutActive(false);
+    setCurrentWorkout([]);
+    setWorkoutStartTime(null);
+    Alert.alert('Success', 'Workout saved!');
+  };
+
+
+
+  const getWorkoutsFromLast4Weeks = () => {
+    const fourWeeksAgo = new Date();
+    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+    
+    return workouts.filter(workout => {
+      const workoutDate = new Date(workout.date);
+      return workoutDate >= fourWeeksAgo;
+    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric'
+    });
+  };
+
+  const getWeeksAgo = (dateString: string) => {
+    const workoutDate = new Date(dateString);
+    const today = new Date();
+    const diffTime = today.getTime() - workoutDate.getTime();
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays} days ago`;
+    
+    const diffWeeks = Math.floor(diffDays / 7);
+    return diffWeeks === 1 ? '1 week ago' : `${diffWeeks} weeks ago`;
+  };
+
+  const loadExerciseTypes = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('exerciseTypes');
+      if (stored) {
+        setExerciseTypes(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading exercise types:', error);
+    }
+  };
+
+  const getExercisesByCategory = (category: string) => {
+    return exerciseTypes.filter((ex: any) => ex.category === category);
+  };
+
+  const generateWorkout = (category: string, exerciseCount: number) => {
+    const categoryExercises = getExercisesByCategory(category);
+    if (categoryExercises.length < exerciseCount) {
+      Alert.alert('Error', `Not enough exercises in ${category} category. Add more exercises in the Exercise Types tab first.`);
+      return;
+    }
+
+    // Randomly select exercises
+    const shuffled = [...categoryExercises].sort(() => 0.5 - Math.random());
+    const selectedExercises = shuffled.slice(0, exerciseCount);
+    
+    // Start workout with pre-selected exercises
+    setIsWorkoutActive(true);
+    setWorkoutStartTime(new Date());
+    
+    // Create exercises with default values that user can modify
+    const presetExercises = selectedExercises.map((exerciseType: any) => ({
+      id: Date.now().toString() + Math.random(),
+      name: exerciseType.name,
+      sets: 3, // Default values
+      reps: 10,
+      weight: 0
+    }));
+    
+    setCurrentWorkout(presetExercises);
+    setShowGenerateWorkout(false);
+    
+    Alert.alert(
+      'Workout Generated!',
+      `Started ${category} workout with: ${selectedExercises.map((ex: any) => ex.name).join(', ')}. Tap any exercise to customize sets, reps, and weights.`
+    );
+  };
+
+  const editExercise = (exercise: Exercise) => {
+    setEditingExercise(exercise);
+    setSets(exercise.sets.toString());
+    setReps(exercise.reps.toString());
+    setWeight(exercise.weight.toString());
+    setShowEditExercise(true);
+  };
+
+  const openEditExercise = (exercise: Exercise) => {
+    setEditingExercise(exercise);
+    setExerciseName(exercise.name);
+    setSets(exercise.sets.toString());
+    setReps(exercise.reps.toString());
+    setWeight(exercise.weight.toString());
+    setShowEditExercise(true);
+  };
+
+  const updateExercise = () => {
+    if (!editingExercise || !sets || !reps || !weight) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    const updatedExercises = currentWorkout.map(exercise => 
+      exercise.id === editingExercise.id 
+        ? {
+            ...exercise,
+            sets: parseInt(sets),
+            reps: parseInt(reps),
+            weight: parseFloat(weight)
+          }
+        : exercise
+    );
+
+    setCurrentWorkout(updatedExercises);
+    setShowEditExercise(false);
+    setEditingExercise(null);
+    setExerciseName('');
+    setSets('');
+    setReps('');
+    setWeight('');
+    Alert.alert('Success', 'Exercise updated!');
+  };
+
+  const deleteExerciseFromWorkout = (exerciseId: string) => {
+    Alert.alert(
+      'Remove Exercise',
+      'Remove this exercise from your workout?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const updatedExercises = currentWorkout.filter(ex => ex.id !== exerciseId);
+            setCurrentWorkout(updatedExercises);
+          }
+        }
+      ]
+    );
+  };
+
+  const deleteWorkout = (workoutId: string) => {
+    Alert.alert(
+      'Delete Workout',
+      'Are you sure you want to permanently delete this workout? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const updatedWorkouts = workouts.filter(w => w.id !== workoutId);
+            saveWorkouts(updatedWorkouts);
+            
+            // If we're viewing the deleted workout, go back to history
+            if (selectedWorkout && selectedWorkout.id === workoutId) {
+              setSelectedWorkout(null);
+            }
+            
+            Alert.alert('Success', 'Workout deleted successfully');
+          }
+        }
+      ]
+    );
+  };
+
+  const clearAllWorkouts = () => {
+    Alert.alert(
+      'Clear All Workouts',
+      `Are you sure you want to delete ALL ${workouts.length} stored workouts? This will permanently remove your entire workout history and cannot be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete All',
+          style: 'destructive',
+          onPress: () => {
+            saveWorkouts([]);
+            setSelectedWorkout(null);
+            setShowWorkoutHistory(false);
+            Alert.alert('Success', 'All workouts have been deleted');
+          }
+        }
+      ]
+    );
+  };
+
+  const cancelWorkout = () => {
+    Alert.alert(
+      'Cancel Workout',
+      'Are you sure you want to cancel this workout? Any exercises you\'ve added will be lost.',
+      [
+        { text: 'Keep Workout', style: 'cancel' },
+        {
+          text: 'Cancel Workout',
+          style: 'destructive',
+          onPress: () => {
+            setIsWorkoutActive(false);
+            setCurrentWorkout([]);
+            setWorkoutStartTime(null);
+            Alert.alert('Workout Cancelled', 'Your workout has been cancelled');
+          }
+        }
+      ]
+    );
+  };
+
+  const styles = createStyles(theme);
+
+  return (
+    <ScrollView style={styles.container}>
+      <Text style={styles.title}>Fitness Tracker</Text>
+      
+      {!isWorkoutActive ? (
+        <View>
+          <Pressable style={styles.startButton} onPress={startWorkout}>
+            <Text style={styles.buttonText}>Start New Workout</Text>
+          </Pressable>
+          
+          <Pressable 
+            style={styles.historyButton} 
+            onPress={() => setShowWorkoutHistory(true)}
+          >
+            <Text style={styles.buttonText}>View Workout History (4 weeks)</Text>
+          </Pressable>
+
+          <Pressable 
+            style={styles.generateButton} 
+            onPress={() => setShowGenerateWorkout(true)}
+          >
+            <Text style={styles.buttonText}>Generate Workout</Text>
+          </Pressable>
+          
+          <Text style={styles.sectionTitle}>Recent Workouts</Text>
+          {getWorkoutsFromLast4Weeks().slice(0, 3).map((workout) => (
+            <Pressable 
+              key={workout.id} 
+              style={styles.workoutCard}
+              onPress={() => {
+                setSelectedWorkout(workout);
+                setShowWorkoutHistory(true);
+              }}
+            >
+              <Text style={styles.workoutDate}>{formatDate(workout.date)}</Text>
+              <Text style={styles.workoutTime}>{getWeeksAgo(workout.date)}</Text>
+              <Text style={styles.workoutDuration}>{workout.duration} minutes</Text>
+              <Text style={styles.exerciseCount}>{workout.exercises.length} exercises</Text>
+            </Pressable>
+          ))}
+          
+          {getWorkoutsFromLast4Weeks().length === 0 && (
+            <Text style={styles.noWorkoutsText}>No workouts in the last 4 weeks</Text>
+          )}
+        </View>
+      ) : (
+        <View>
+          <Text style={styles.activeWorkoutTitle}>Active Workout</Text>
+          <Text style={styles.timer}>
+            Started: {workoutStartTime?.toLocaleTimeString()}
+          </Text>
+          
+          <View style={styles.activeWorkoutButtons}>
+            <Pressable 
+              style={styles.addExerciseButton} 
+              onPress={() => setShowAddExercise(true)}
+            >
+              <Text style={styles.buttonText}>Add Exercise</Text>
+            </Pressable>
+            
+            <Pressable 
+              style={styles.cancelWorkoutButton} 
+              onPress={cancelWorkout}
+            >
+              <Text style={styles.buttonText}>Cancel Workout</Text>
+            </Pressable>
+          </View>
+          
+          {currentWorkout.map((exercise) => (
+            <Pressable 
+              key={exercise.id} 
+              style={styles.exerciseCard}
+              onPress={() => openEditExercise(exercise)}
+            >
+              <View style={styles.exerciseInfo}>
+                <Text style={styles.exerciseName}>{exercise.name}</Text>
+                <Text style={styles.exerciseDetails}>
+                  {exercise.sets} sets × {exercise.reps} reps @ {exercise.weight}lbs
+                </Text>
+              </View>
+              <Pressable 
+                style={styles.deleteExerciseButton}
+                onPress={() => deleteExerciseFromWorkout(exercise.id)}
+              >
+                <Text style={styles.deleteExerciseText}>×</Text>
+              </Pressable>
+            </Pressable>
+          ))}
+          
+          <Pressable style={styles.finishButton} onPress={finishWorkout}>
+            <Text style={styles.buttonText}>Finish Workout</Text>
+          </Pressable>
+        </View>
+      )}
+
+      <Modal visible={showAddExercise} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Add Exercise</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Exercise name"
+              value={exerciseName}
+              onChangeText={setExerciseName}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Sets"
+              value={sets}
+              onChangeText={setSets}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Reps"
+              value={reps}
+              onChangeText={setReps}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Weight (lbs)"
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+            />
+            
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => setShowAddExercise(false)}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.addButton]} 
+                onPress={addExercise}
+              >
+                <Text style={styles.buttonText}>Add</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={showWorkoutHistory} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.historyModalContent}>
+            <Text style={styles.modalTitle}>
+              {selectedWorkout ? 'Workout Details' : 'Workout History (4 weeks)'}
+            </Text>
+            
+            {selectedWorkout ? (
+              <ScrollView style={styles.workoutDetailsScroll}>
+                <View style={styles.workoutDetailsHeader}>
+                  <Text style={styles.workoutDetailsDate}>
+                    {formatDate(selectedWorkout.date)}
+                  </Text>
+                  <Text style={styles.workoutDetailsTime}>
+                    {getWeeksAgo(selectedWorkout.date)}
+                  </Text>
+                  <Text style={styles.workoutDetailsDuration}>
+                    Duration: {selectedWorkout.duration} minutes
+                  </Text>
+                </View>
+                
+                <Text style={styles.exercisesTitle}>Exercises:</Text>
+                {selectedWorkout.exercises.map((exercise) => (
+                  <View key={exercise.id} style={styles.exerciseDetailCard}>
+                    <Text style={styles.exerciseDetailName}>{exercise.name}</Text>
+                    <Text style={styles.exerciseDetailInfo}>
+                      {exercise.sets} sets × {exercise.reps} reps @ {exercise.weight}lbs
+                    </Text>
+                  </View>
+                ))}
+                
+                <View style={styles.workoutDetailsButtons}>
+                  <Pressable 
+                    style={styles.backToHistoryButton}
+                    onPress={() => setSelectedWorkout(null)}
+                  >
+                    <Text style={styles.buttonText}>Workout History</Text>
+                  </Pressable>
+                  
+                  <Pressable 
+                    style={styles.deleteWorkoutDetailButton}
+                    onPress={() => deleteWorkout(selectedWorkout.id)}
+                  >
+                    <Text style={styles.buttonText}>Delete Workout</Text>
+                  </Pressable>
+                </View>
+              </ScrollView>
+            ) : (
+              <ScrollView style={styles.historyScroll}>
+                {getWorkoutsFromLast4Weeks().map((workout) => (
+                  <View key={workout.id} style={styles.historyWorkoutCard}>
+                    <Pressable 
+                      style={styles.workoutCardContent}
+                      onPress={() => setSelectedWorkout(workout)}
+                    >
+                      <Text style={styles.historyWorkoutDate}>
+                        {formatDate(workout.date)}
+                      </Text>
+                      <Text style={styles.historyWorkoutTime}>
+                        {getWeeksAgo(workout.date)}
+                      </Text>
+                      <Text style={styles.historyWorkoutDuration}>
+                        {workout.duration} minutes • {workout.exercises.length} exercises
+                      </Text>
+                    </Pressable>
+                    <Pressable 
+                      style={styles.deleteWorkoutButton}
+                      onPress={() => deleteWorkout(workout.id)}
+                    >
+                      <Text style={styles.deleteWorkoutText}>🗑️</Text>
+                    </Pressable>
+                  </View>
+                ))}
+                
+                {getWorkoutsFromLast4Weeks().length === 0 && (
+                  <Text style={styles.noHistoryText}>
+                    No workouts found in the last 4 weeks
+                  </Text>
+                )}
+              </ScrollView>
+            )}
+            
+            <View style={styles.historyModalButtons}>
+              {workouts.length > 0 && (
+                <Pressable 
+                  style={styles.clearAllButton}
+                  onPress={clearAllWorkouts}
+                >
+                  <Text style={styles.buttonText}>Clear All Workouts</Text>
+                </Pressable>
+              )}
+              
+              <Pressable 
+                style={styles.closeHistoryButton}
+                onPress={() => {
+                  setShowWorkoutHistory(false);
+                  setSelectedWorkout(null);
+                }}
+              >
+                <Text style={styles.buttonText}>Close</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Generate Workout Modal */}
+      <Modal visible={showGenerateWorkout} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Generate Workout</Text>
+            
+            {['Arms', 'Legs', 'Chest', 'Back', 'Shoulders', 'Core'].map(category => {
+              const count = getExercisesByCategory(category).length;
+              return (
+                <View key={category} style={styles.generateOption}>
+                  <Text style={styles.generateCategoryTitle}>
+                    {category} ({count} exercises available)
+                  </Text>
+                  <View style={styles.generateButtons}>
+                    {[3, 4, 5].map(exerciseCount => (
+                      <Pressable
+                        key={exerciseCount}
+                        style={[
+                          styles.generateCountButton,
+                          count < exerciseCount && styles.disabledButton
+                        ]}
+                        onPress={() => generateWorkout(category, exerciseCount)}
+                        disabled={count < exerciseCount}
+                      >
+                        <Text style={[
+                          styles.generateCountText,
+                          count < exerciseCount && styles.disabledText
+                        ]}>
+                          {exerciseCount} exercises
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              );
+            })}
+            
+            <Pressable 
+              style={styles.closeButton}
+              onPress={() => setShowGenerateWorkout(false)}
+            >
+              <Text style={styles.buttonText}>Close</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Exercise Modal */}
+      <Modal visible={showEditExercise} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Exercise</Text>
+            
+            <TextInput
+              style={styles.input}
+              placeholder="Exercise name"
+              value={exerciseName}
+              onChangeText={setExerciseName}
+              editable={false}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Sets"
+              value={sets}
+              onChangeText={setSets}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Reps"
+              value={reps}
+              onChangeText={setReps}
+              keyboardType="numeric"
+            />
+            <TextInput
+              style={styles.input}
+              placeholder="Weight (lbs)"
+              value={weight}
+              onChangeText={setWeight}
+              keyboardType="numeric"
+            />
+            
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => {
+                  setShowEditExercise(false);
+                  setEditingExercise(null);
+                  setExerciseName('');
+                  setSets('');
+                  setReps('');
+                  setWeight('');
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.addButton]} 
+                onPress={updateExercise}
+              >
+                <Text style={styles.buttonText}>Update</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+    </ScrollView>
+  );
+}
+
+const createStyles = (theme: any) => StyleSheet.create({
+  container: {
+    flex: 1,
+    padding: 20,
+    backgroundColor: theme.background
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 30,
+    color: theme.text
+  },
+  startButton: {
+    backgroundColor: theme.success,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 30
+  },
+  buttonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  sectionTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: theme.text
+  },
+  workoutCard: {
+    backgroundColor: theme.surface,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  workoutDate: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text
+  },
+  workoutDuration: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  exerciseCount: {
+    fontSize: 14,
+    color: theme.textSecondary
+  },
+  activeWorkoutTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 10,
+    color: theme.primary
+  },
+  timer: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: theme.textSecondary,
+    marginBottom: 20
+  },
+  addExerciseButton: {
+    backgroundColor: theme.secondary,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20
+  },
+  exerciseCard: {
+    backgroundColor: theme.surface,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  exerciseInfo: {
+    flex: 1
+  },
+  exerciseName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text
+  },
+  exerciseDetails: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  finishButton: {
+    backgroundColor: theme.error,
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 20
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalContent: {
+    backgroundColor: theme.surface,
+    padding: 20,
+    borderRadius: 15,
+    width: '90%',
+    maxWidth: 400
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: theme.text
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: theme.textSecondary,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 15,
+    fontSize: 16,
+    backgroundColor: theme.surface,
+    color: theme.text
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8
+  },
+  cancelButton: {
+    backgroundColor: theme.textSecondary
+  },
+  addButton: {
+    backgroundColor: theme.success
+  },
+  historyButton: {
+    backgroundColor: theme.primary,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20
+  },
+  workoutTime: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    marginTop: 2
+  },
+  noWorkoutsText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: theme.textSecondary,
+    marginTop: 20,
+    fontStyle: 'italic'
+  },
+  historyModalContent: {
+    backgroundColor: theme.surface,
+    padding: 20,
+    borderRadius: 15,
+    width: '95%',
+    maxWidth: 500,
+    maxHeight: '80%'
+  },
+  workoutDetailsScroll: {
+    maxHeight: 400
+  },
+  workoutDetailsHeader: {
+    backgroundColor: theme.background,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20
+  },
+  workoutDetailsDate: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: theme.text
+  },
+  workoutDetailsTime: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  workoutDetailsDuration: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  exercisesTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+    color: theme.text
+  },
+  exerciseDetailCard: {
+    backgroundColor: theme.background,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 10
+  },
+  exerciseDetailName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text
+  },
+  exerciseDetailInfo: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  backToHistoryButton: {
+    backgroundColor: theme.secondary,
+    padding: 12,
+    borderRadius: 8,
+    marginTop: 20,
+    alignItems: 'center',
+    justifyContent: 'center'
+  },
+  historyScroll: {
+    maxHeight: 400
+  },
+  historyWorkoutCard: {
+    backgroundColor: theme.background,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.primary
+  },
+  historyWorkoutDate: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text
+  },
+  historyWorkoutTime: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    marginTop: 2
+  },
+  historyWorkoutDuration: {
+    fontSize: 14,
+    color: theme.textSecondary,
+    marginTop: 5
+  },
+  noHistoryText: {
+    textAlign: 'center',
+    fontSize: 16,
+    color: theme.textSecondary,
+    marginTop: 40,
+    fontStyle: 'italic'
+  },
+  closeHistoryButton: {
+    backgroundColor: theme.textSecondary,
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 20
+  },
+  generateButton: {
+    backgroundColor: theme.accent,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20
+  },
+  activeWorkoutButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 20
+  },
+  cancelWorkoutButton: {
+    backgroundColor: theme.error,
+    padding: 12,
+    borderRadius: 8,
+    flex: 1
+  },
+  generateOption: {
+    marginBottom: 20,
+    padding: 15,
+    backgroundColor: theme.background,
+    borderRadius: 10
+  },
+  generateCategoryTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    color: theme.text
+  },
+  generateButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  generateCountButton: {
+    flex: 1,
+    backgroundColor: theme.secondary,
+    padding: 10,
+    borderRadius: 8
+  },
+  disabledButton: {
+    backgroundColor: theme.textSecondary,
+    opacity: 0.5
+  },
+  generateCountText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 12,
+    fontWeight: 'bold'
+  },
+  disabledText: {
+    color: theme.textSecondary
+  },
+  closeButton: {
+    backgroundColor: theme.textSecondary,
+    padding: 15,
+    borderRadius: 10,
+    marginTop: 20
+  },
+  deleteExerciseButton: {
+    backgroundColor: theme.error,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10
+  },
+  deleteExerciseText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold'
+  },
+  workoutCardContent: {
+    flex: 1
+  },
+  deleteWorkoutButton: {
+    backgroundColor: theme.error,
+    width: 35,
+    height: 35,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 10,
+    marginTop: 10,
+  },
+  deleteWorkoutText: {
+    fontSize: 16
+  },
+  workoutDetailsButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 20
+  },
+  deleteWorkoutDetailButton: {
+    backgroundColor: theme.error,
+    padding: 12,
+    borderRadius: 8,
+    flex: 1
+  },
+  historyModalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginTop: 20
+  },
+  clearAllButton: {
+    backgroundColor: theme.error,
+    padding: 15,
+    borderRadius: 10,
+    flex: 1
+  }
 })

@@ -1,7 +1,7 @@
 import { Tabs } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 //File is taking care of aesthetically organizing the screen and
 //providing a way to navigate between screens.
@@ -23,9 +23,9 @@ export default function TabLayout() {
         }}
         >
 
-            <Tabs.Screen name='index' options={{
+            <Tabs.Screen name='notes' options={{
                 //unmountOnBlur: true,
-                title: 'Home',
+                title: 'Notes',
                 tabBarIcon: ({ color, focused }) => (
                     <FontAwesome name={focused ? 'home' :
                         'home'} color={color} size={24} />
@@ -33,47 +33,23 @@ export default function TabLayout() {
             }}
             />
 
-            <Tabs.Screen name='profile' options={{
+            <Tabs.Screen name='settings' options={{
                 //unmountOnBlur: true,
-                title: 'Profile',
+                title: 'Settings',
                 tabBarIcon: ({ color, focused }) => (
-                    <FontAwesome name={focused ? 'user' :
-                        'user'} color={color} size={24} />
+                    <FontAwesome name={focused ? 'gear' :
+                        'gear'} color={color} size={24} />
                 ),
             }}
             />
 
-            <Tabs.Screen name='events' options={{
+            <Tabs.Screen name='workoutTypes' options={{
                 //unmountOnBlur: true,
-                title: 'Events',
+                title: 'Workouts',
                 tabBarIcon: ({ color, focused }) => (
-                    <MaterialIcons name={focused ? 'event' :
-                        'event'} color={color} size={24} />
+                    <Ionicons name="barbell-outline" size={32} color={color}/>
                 ),
             }}
-            />
-
-            <Tabs.Screen name='memberPosts' 
-                options={{
-                //unmountOnBlur: true,
-                title: "Member Posts",
-                tabBarIcon: ({color,focused}) => 
-                    // {
-                    // return ( //This shows how to do a custom icon
-                    //   <Image
-                    //     style={{ width: 30, height: 30}}
-                    //     source={
-                    //         require('@/assets/images/serve.png')
-                    //     }
-                    //     tintColor={color}
-                    //   />
-                    // )
-                    // }}}
-                    <MaterialIcons
-                        name={focused ? 'post-add' :
-                        'post-add'} color={color} size={24}
-                    />
-                }}
             />
 
         </Tabs>
