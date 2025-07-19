@@ -1,14 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
-    Alert,
-    Modal,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    View,
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { useTheme } from "../../contexts/ThemeContext";
 
@@ -38,6 +39,7 @@ const DEFAULT_CATEGORIES = [
 export default function WorkoutTypesManager() {
   const { theme } = useTheme();
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
@@ -49,7 +51,15 @@ export default function WorkoutTypesManager() {
 
   useEffect(() => {
     loadExerciseTypes();
+    loadCategories();
   }, []);
+
+  // Reload categories when tab becomes active (to sync with Settings changes)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCategories();
+    }, [])
+  );
 
   const loadExerciseTypes = async () => {
     try {
@@ -67,6 +77,25 @@ export default function WorkoutTypesManager() {
       }
     } catch (error) {
       console.error("Error loading exercise types:", error);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const stored = await AsyncStorage.getItem("exerciseCategories");
+      if (stored) {
+        const loadedCategories = JSON.parse(stored);
+        setCategories(loadedCategories);
+        // Update the default exercise category to the first available category
+        if (
+          loadedCategories.length > 0 &&
+          !loadedCategories.includes(exerciseCategory)
+        ) {
+          setExerciseCategory(loadedCategories[0]);
+        }
+      }
+    } catch (error) {
+      console.error("Error loading categories:", error);
     }
   };
 
@@ -203,7 +232,7 @@ export default function WorkoutTypesManager() {
 
   return (
     <ScrollView style={styles.container}>
-      <Text style={styles.title}>Workout Types Manager</Text>
+      <Text style={styles.title}>Workout Manager</Text>
 
       <Pressable
         style={styles.addButton}
@@ -219,7 +248,7 @@ export default function WorkoutTypesManager() {
         <Text style={styles.buttonText}>Generate Workout</Text>
       </Pressable>
 
-      {DEFAULT_CATEGORIES.map((category) => {
+      {categories.map((category) => {
         const categoryExercises = getExercisesByCategory(category);
         return (
           <View key={category} style={styles.categorySection}>
@@ -272,7 +301,7 @@ export default function WorkoutTypesManager() {
               showsHorizontalScrollIndicator={false}
               style={styles.categorySelector}
             >
-              {DEFAULT_CATEGORIES.map((category) => (
+              {categories.map((category) => (
                 <Pressable
                   key={category}
                   style={[
@@ -326,38 +355,45 @@ export default function WorkoutTypesManager() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Generate Workout</Text>
 
-            {DEFAULT_CATEGORIES.map((category) => {
-              const count = getExercisesByCategory(category).length;
-              return (
-                <View key={category} style={styles.generateOption}>
-                  <Text style={styles.generateCategoryTitle}>
-                    {category} ({count} exercises)
-                  </Text>
-                  <View style={styles.generateButtons}>
-                    {[3, 4, 5].map((exerciseCount) => (
-                      <Pressable
-                        key={exerciseCount}
-                        style={[
-                          styles.generateCountButton,
-                          count < exerciseCount && styles.disabledButton,
-                        ]}
-                        onPress={() => generateWorkout(category, exerciseCount)}
-                        disabled={count < exerciseCount}
-                      >
-                        <Text
+            <ScrollView
+              style={styles.generateScrollView}
+              showsVerticalScrollIndicator={true}
+            >
+              {categories.map((category) => {
+                const count = getExercisesByCategory(category).length;
+                return (
+                  <View key={category} style={styles.generateOption}>
+                    <Text style={styles.generateCategoryTitle}>
+                      {category} ({count} exercises)
+                    </Text>
+                    <View style={styles.generateButtons}>
+                      {[3, 4, 5].map((exerciseCount) => (
+                        <Pressable
+                          key={exerciseCount}
                           style={[
-                            styles.generateCountText,
-                            count < exerciseCount && styles.disabledText,
+                            styles.generateCountButton,
+                            count < exerciseCount && styles.disabledButton,
                           ]}
+                          onPress={() =>
+                            generateWorkout(category, exerciseCount)
+                          }
+                          disabled={count < exerciseCount}
                         >
-                          {exerciseCount} exercises
-                        </Text>
-                      </Pressable>
-                    ))}
+                          <Text
+                            style={[
+                              styles.generateCountText,
+                              count < exerciseCount && styles.disabledText,
+                            ]}
+                          >
+                            {exerciseCount} exercises
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </ScrollView>
 
             <Pressable
               style={styles.closeButton}
@@ -372,217 +408,222 @@ export default function WorkoutTypesManager() {
   );
 }
 
-const createStyles = (theme: any) => StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: theme.background,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 30,
-    color: theme.text,
-  },
-  addButton: {
-    backgroundColor: theme.success,
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  generateButton: {
-    backgroundColor: theme.accent,
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 30,
-  },
-  buttonText: {
-    color: "white",
-    textAlign: "center",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  categorySection: {
-    marginBottom: 25,
-  },
-  categoryTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 15,
-    color: theme.text,
-    borderBottomWidth: 2,
-    borderBottomColor: theme.primary,
-    paddingBottom: 5,
-  },
-  exerciseCard: {
-    backgroundColor: theme.surface,
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 10,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  exerciseInfo: {
-    flex: 1,
-  },
-  exerciseName: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: theme.text,
-  },
-  exerciseDescription: {
-    fontSize: 14,
-    color: theme.textSecondary,
-    marginTop: 5,
-  },
-  deleteButton: {
-    backgroundColor: theme.error,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deleteButtonText: {
-    color: "white",
-    fontSize: 18,
-    fontWeight: "bold",
-  },
-  noExercisesText: {
-    textAlign: "center",
-    fontSize: 14,
-    color: theme.textSecondary,
-    fontStyle: "italic",
-    marginVertical: 10,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: theme.surface,
-    padding: 20,
-    borderRadius: 15,
-    width: "90%",
-    maxWidth: 400,
-    maxHeight: "80%",
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 20,
-    color: theme.text,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: theme.textSecondary,
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 15,
-    fontSize: 16,
-    backgroundColor: theme.surface,
-    color: theme.text,
-  },
-  inputLabel: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: theme.text,
-  },
-  categorySelector: {
-    marginBottom: 15,
-  },
-  categoryOption: {
-    backgroundColor: theme.background,
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 10,
-    borderWidth: 1,
-    borderColor: theme.textSecondary,
-  },
-  selectedCategory: {
-    backgroundColor: theme.primary,
-  },
-  categoryOptionText: {
-    fontSize: 14,
-    color: theme.text,
-  },
-  selectedCategoryText: {
-    color: "white",
-    fontWeight: "bold",
-  },
-  descriptionInput: {
-    height: 80,
-    textAlignVertical: "top",
-  },
-  modalButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-    marginTop: 10,
-  },
-  modalButton: {
-    flex: 1,
-    padding: 12,
-    borderRadius: 8,
-  },
-  cancelButton: {
-    backgroundColor: theme.textSecondary,
-  },
-  addModalButton: {
-    backgroundColor: theme.success,
-  },
-  generateOption: {
-    marginBottom: 20,
-    padding: 15,
-    backgroundColor: theme.background,
-    borderRadius: 10,
-  },
-  generateCategoryTitle: {
-    fontSize: 16,
-    fontWeight: "bold",
-    marginBottom: 10,
-    color: theme.text,
-  },
-  generateButtons: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 10,
-  },
-  generateCountButton: {
-    flex: 1,
-    backgroundColor: theme.secondary,
-    padding: 10,
-    borderRadius: 8,
-  },
-  disabledButton: {
-    backgroundColor: theme.textSecondary,
-    opacity: 0.5,
-  },
-  generateCountText: {
-    color: "white",
-    textAlign: "center",
-    fontSize: 12,
-    fontWeight: "bold",
-  },
-  disabledText: {
-    color: theme.textSecondary,
-  },
-  closeButton: {
-    backgroundColor: theme.textSecondary,
-    padding: 15,
-    borderRadius: 10,
-    marginTop: 20,
-  },
-});
+const createStyles = (theme: any) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 20,
+      backgroundColor: theme.background,
+    },
+    title: {
+      fontSize: 28,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 30,
+      color: theme.text,
+    },
+    addButton: {
+      backgroundColor: theme.success,
+      padding: 15,
+      borderRadius: 10,
+      marginBottom: 15,
+    },
+    generateButton: {
+      backgroundColor: theme.secondary,
+      padding: 15,
+      borderRadius: 10,
+      marginBottom: 30,
+    },
+    buttonText: {
+      color: "white",
+      textAlign: "center",
+      fontSize: 16,
+      fontWeight: "bold",
+    },
+    categorySection: {
+      marginBottom: 25,
+    },
+    categoryTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      marginBottom: 15,
+      color: theme.text,
+      borderBottomWidth: 2,
+      borderBottomColor: theme.primary,
+      paddingBottom: 5,
+    },
+    exerciseCard: {
+      backgroundColor: theme.surface,
+      padding: 15,
+      borderRadius: 10,
+      marginBottom: 10,
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    exerciseInfo: {
+      flex: 1,
+    },
+    exerciseName: {
+      fontSize: 16,
+      fontWeight: "bold",
+      color: theme.text,
+    },
+    exerciseDescription: {
+      fontSize: 14,
+      color: theme.textSecondary,
+      marginTop: 5,
+    },
+    deleteButton: {
+      backgroundColor: theme.error,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    deleteButtonText: {
+      color: "white",
+      fontSize: 18,
+      fontWeight: "bold",
+    },
+    noExercisesText: {
+      textAlign: "center",
+      fontSize: 14,
+      color: theme.textSecondary,
+      fontStyle: "italic",
+      marginVertical: 10,
+    },
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.5)",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    modalContent: {
+      backgroundColor: theme.surface,
+      padding: 20,
+      borderRadius: 15,
+      width: "90%",
+      maxWidth: 400,
+      maxHeight: "80%",
+    },
+    modalTitle: {
+      fontSize: 20,
+      fontWeight: "bold",
+      textAlign: "center",
+      marginBottom: 20,
+      color: theme.text,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: theme.textSecondary,
+      padding: 12,
+      borderRadius: 8,
+      marginBottom: 15,
+      fontSize: 16,
+      backgroundColor: theme.surface,
+      color: theme.text,
+    },
+    inputLabel: {
+      fontSize: 16,
+      fontWeight: "bold",
+      marginBottom: 10,
+      color: theme.text,
+    },
+    categorySelector: {
+      marginBottom: 15,
+    },
+    categoryOption: {
+      backgroundColor: theme.background,
+      paddingHorizontal: 15,
+      paddingVertical: 8,
+      borderRadius: 20,
+      marginRight: 10,
+      borderWidth: 1,
+      borderColor: theme.textSecondary,
+    },
+    selectedCategory: {
+      backgroundColor: theme.primary,
+    },
+    categoryOptionText: {
+      fontSize: 14,
+      color: theme.text,
+    },
+    selectedCategoryText: {
+      color: "white",
+      fontWeight: "bold",
+    },
+    descriptionInput: {
+      height: 80,
+      textAlignVertical: "top",
+    },
+    modalButtons: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 10,
+      marginTop: 10,
+    },
+    modalButton: {
+      flex: 1,
+      padding: 12,
+      borderRadius: 8,
+    },
+    cancelButton: {
+      backgroundColor: theme.textSecondary,
+    },
+    addModalButton: {
+      backgroundColor: theme.success,
+    },
+    generateOption: {
+      marginBottom: 20,
+      padding: 15,
+      backgroundColor: theme.background,
+      borderRadius: 10,
+    },
+    generateCategoryTitle: {
+      fontSize: 16,
+      fontWeight: "bold",
+      marginBottom: 10,
+      color: theme.text,
+    },
+    generateButtons: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      gap: 10,
+    },
+    generateCountButton: {
+      flex: 1,
+      backgroundColor: theme.secondary,
+      padding: 10,
+      borderRadius: 8,
+    },
+    disabledButton: {
+      backgroundColor: theme.textSecondary,
+      opacity: 0.5,
+    },
+    generateCountText: {
+      color: "white",
+      textAlign: "center",
+      fontSize: 12,
+      fontWeight: "bold",
+    },
+    disabledText: {
+      color: theme.textSecondary,
+    },
+    closeButton: {
+      backgroundColor: theme.textSecondary,
+      padding: 15,
+      borderRadius: 10,
+      marginTop: 20,
+    },
+    generateScrollView: {
+      maxHeight: 400,
+      marginBottom: 10,
+    },
+  });

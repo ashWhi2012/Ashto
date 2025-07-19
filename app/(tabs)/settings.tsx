@@ -1,11 +1,14 @@
-import React from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, { useEffect, useState } from 'react';
 import {
-    Alert,
-    Pressable,
-    ScrollView,
-    StyleSheet,
-    Text,
-    View
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -139,8 +142,74 @@ export const THEMES: Theme[] = [
   }
 ];
 
+const DEFAULT_CATEGORIES = ['Arms', 'Legs', 'Chest', 'Back', 'Shoulders', 'Core', 'Cardio'];
+
+const WORKOUT_RETENTION_OPTIONS = [
+  { label: '1 Week', weeks: 1 },
+  { label: '2 Weeks', weeks: 2 },
+  { label: '4 Weeks', weeks: 4 },
+  { label: '8 Weeks', weeks: 8 },
+  { label: '12 Weeks', weeks: 12 },
+  { label: '6 Months', weeks: 26 },
+  { label: '1 Year', weeks: 52 },
+  { label: 'Forever', weeks: -1 }
+];
+
 export default function Settings() {
   const { theme, setTheme } = useTheme();
+  const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryName, setCategoryName] = useState('');
+  const [editingCategory, setEditingCategory] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [workoutRetentionWeeks, setWorkoutRetentionWeeks] = useState(4);
+
+  useEffect(() => {
+    loadCategories();
+    loadWorkoutRetention();
+  }, []);
+
+  const loadCategories = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('exerciseCategories');
+      if (stored) {
+        setCategories(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
+    }
+  };
+
+  const loadWorkoutRetention = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('workoutRetentionWeeks');
+      if (stored) {
+        setWorkoutRetentionWeeks(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading workout retention:', error);
+    }
+  };
+
+  const saveCategories = async (newCategories: string[]) => {
+    try {
+      await AsyncStorage.setItem('exerciseCategories', JSON.stringify(newCategories));
+      setCategories(newCategories);
+    } catch (error) {
+      console.error('Error saving categories:', error);
+    }
+  };
+
+  const saveWorkoutRetention = async (weeks: number) => {
+    try {
+      await AsyncStorage.setItem('workoutRetentionWeeks', JSON.stringify(weeks));
+      setWorkoutRetentionWeeks(weeks);
+      const option = WORKOUT_RETENTION_OPTIONS.find(opt => opt.weeks === weeks);
+      Alert.alert('Setting Updated', `Workout history will now show ${option?.label.toLowerCase() || 'selected period'}`);
+    } catch (error) {
+      console.error('Error saving workout retention:', error);
+    }
+  };
 
   const saveTheme = async (newTheme: Theme) => {
     try {
@@ -160,6 +229,90 @@ export default function Settings() {
         {
           text: 'Reset',
           onPress: () => saveTheme(THEMES[0])
+        }
+      ]
+    );
+  };
+
+  const addCategory = () => {
+    if (!categoryName.trim()) {
+      Alert.alert('Error', 'Please enter a category name');
+      return;
+    }
+    
+    if (categories.includes(categoryName.trim())) {
+      Alert.alert('Error', 'Category already exists');
+      return;
+    }
+
+    const newCategories = [...categories, categoryName.trim()];
+    saveCategories(newCategories);
+    setCategoryName('');
+    setShowCategoryModal(false);
+    Alert.alert('Success', 'Category added successfully!');
+  };
+
+  const editCategory = (oldName: string) => {
+    setEditingCategory(oldName);
+    setCategoryName(oldName);
+    setIsEditing(true);
+    setShowCategoryModal(true);
+  };
+
+  const updateCategory = () => {
+    if (!categoryName.trim()) {
+      Alert.alert('Error', 'Please enter a category name');
+      return;
+    }
+
+    if (categoryName.trim() !== editingCategory && categories.includes(categoryName.trim())) {
+      Alert.alert('Error', 'Category already exists');
+      return;
+    }
+
+    const newCategories = categories.map(cat => 
+      cat === editingCategory ? categoryName.trim() : cat
+    );
+    saveCategories(newCategories);
+    setCategoryName('');
+    setEditingCategory(null);
+    setIsEditing(false);
+    setShowCategoryModal(false);
+    Alert.alert('Success', 'Category updated successfully!');
+  };
+
+  const deleteCategory = (categoryToDelete: string) => {
+    Alert.alert(
+      'Delete Category',
+      `Are you sure you want to delete "${categoryToDelete}"? This will also remove all exercises in this category.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => {
+            const newCategories = categories.filter(cat => cat !== categoryToDelete);
+            saveCategories(newCategories);
+            Alert.alert('Success', 'Category deleted successfully!');
+          }
+        }
+      ]
+    );
+  };
+
+  const resetCategories = () => {
+    Alert.alert(
+      'Reset Categories',
+      'Reset to default exercise categories? This will remove all custom categories.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            saveCategories(DEFAULT_CATEGORIES);
+            Alert.alert('Success', 'Categories reset to defaults!');
+          }
         }
       ]
     );
@@ -236,11 +389,131 @@ export default function Settings() {
       </View>
 
       <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Exercise Categories</Text>
+        <Text style={styles.sectionDescription}>
+          Manage your workout exercise categories
+        </Text>
+        
+        <Pressable 
+          style={styles.addCategoryButton} 
+          onPress={() => {
+            setIsEditing(false);
+            setCategoryName('');
+            setShowCategoryModal(true);
+          }}
+        >
+          <Text style={styles.buttonText}>Add New Category</Text>
+        </Pressable>
+
+        <View style={styles.categoriesContainer}>
+          {categories.map((category) => (
+            <View key={category} style={styles.categoryCard}>
+              <Text style={styles.categoryName}>{category}</Text>
+              <View style={styles.categoryActions}>
+                <Pressable 
+                  style={styles.editCategoryButton}
+                  onPress={() => editCategory(category)}
+                >
+                  <Text style={styles.actionButtonText}>✏️</Text>
+                </Pressable>
+                <Pressable 
+                  style={styles.deleteCategoryButton}
+                  onPress={() => deleteCategory(category)}
+                >
+                  <Text style={styles.actionButtonText}>🗑️</Text>
+                </Pressable>
+              </View>
+            </View>
+          ))}
+        </View>
+
+        <Pressable style={styles.resetCategoriesButton} onPress={resetCategories}>
+          <Text style={styles.resetButtonText}>Reset to Default Categories</Text>
+        </Pressable>
+      </View>
+
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Workout History Retention</Text>
+        <Text style={styles.sectionDescription}>
+          Choose how long to keep your workout history visible
+        </Text>
+        
+        <View style={styles.retentionGrid}>
+          {WORKOUT_RETENTION_OPTIONS.map((option) => (
+            <Pressable
+              key={option.weeks}
+              style={[
+                styles.retentionCard,
+                workoutRetentionWeeks === option.weeks && styles.selectedRetentionCard
+              ]}
+              onPress={() => saveWorkoutRetention(option.weeks)}
+            >
+              <Text style={[
+                styles.retentionLabel,
+                workoutRetentionWeeks === option.weeks && styles.selectedRetentionLabel
+              ]}>
+                {option.label}
+              </Text>
+              {workoutRetentionWeeks === option.weeks && (
+                <Text style={styles.selectedIndicator}>✓ Active</Text>
+              )}
+            </Pressable>
+          ))}
+        </View>
+        
+        <Text style={styles.retentionNote}>
+          Current setting: {WORKOUT_RETENTION_OPTIONS.find(opt => opt.weeks === workoutRetentionWeeks)?.label || '4 Weeks'}
+          {workoutRetentionWeeks === -1 ? ' - All workouts will be kept' : ` - Workouts older than ${workoutRetentionWeeks} week${workoutRetentionWeeks === 1 ? '' : 's'} will be hidden`}
+        </Text>
+      </View>
+
+      <View style={styles.section}>
         <Text style={styles.sectionTitle}>About Themes</Text>
         <Text style={styles.aboutText}>
           Themes change the color scheme throughout the entire app. Your selected theme will be saved and applied every time you open the app.
         </Text>
       </View>
+
+      {/* Category Modal */}
+      <Modal visible={showCategoryModal} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>
+              {isEditing ? 'Edit Category' : 'Add New Category'}
+            </Text>
+            
+            <TextInput
+              style={styles.categoryInput}
+              placeholder="Category name"
+              value={categoryName}
+              onChangeText={setCategoryName}
+              autoFocus
+            />
+            
+            <View style={styles.modalButtons}>
+              <Pressable 
+                style={[styles.modalButton, styles.cancelButton]} 
+                onPress={() => {
+                  setShowCategoryModal(false);
+                  setCategoryName('');
+                  setEditingCategory(null);
+                  setIsEditing(false);
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </Pressable>
+              <Pressable 
+                style={[styles.modalButton, styles.saveButton]} 
+                onPress={isEditing ? updateCategory : addCategory}
+              >
+                <Text style={styles.buttonText}>
+                  {isEditing ? 'Update' : 'Add'}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -370,5 +643,158 @@ const createStyles = (theme: Theme) => StyleSheet.create({
     fontSize: 14,
     color: theme.textSecondary,
     lineHeight: 20
+  },
+  addCategoryButton: {
+    backgroundColor: theme.success,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+    marginBottom: 20
+  },
+  categoriesContainer: {
+    marginBottom: 20
+  },
+  categoryCard: {
+    backgroundColor: theme.surface,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3
+  },
+  categoryName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text,
+    flex: 1
+  },
+  categoryActions: {
+    flexDirection: 'row',
+    gap: 10
+  },
+  editCategoryButton: {
+    backgroundColor: theme.secondary,
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  deleteCategoryButton: {
+    backgroundColor: theme.error,
+    width: 35,
+    height: 35,
+    borderRadius: 17.5,
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  actionButtonText: {
+    fontSize: 16
+  },
+  resetCategoriesButton: {
+    backgroundColor: theme.warning,
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center'
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  modalContent: {
+    backgroundColor: theme.surface,
+    padding: 20,
+    borderRadius: 15,
+    width: '90%',
+    maxWidth: 400
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 20,
+    color: theme.text
+  },
+  categoryInput: {
+    borderWidth: 1,
+    borderColor: theme.textSecondary,
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 20,
+    fontSize: 16,
+    backgroundColor: theme.surface,
+    color: theme.text
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10
+  },
+  modalButton: {
+    flex: 1,
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center'
+  },
+  cancelButton: {
+    backgroundColor: theme.textSecondary
+  },
+  saveButton: {
+    backgroundColor: theme.success
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold'
+  },
+  retentionGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 15
+  },
+  retentionCard: {
+    width: '47%',
+    backgroundColor: theme.surface,
+    padding: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+    marginBottom: 10
+  },
+  selectedRetentionCard: {
+    borderColor: theme.primary,
+    borderWidth: 3
+  },
+  retentionLabel: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: theme.text,
+    textAlign: 'center'
+  },
+  selectedRetentionLabel: {
+    color: theme.primary
+  },
+  retentionNote: {
+    fontSize: 12,
+    color: theme.textSecondary,
+    fontStyle: 'italic',
+    textAlign: 'center',
+    marginTop: 10
   }
 });

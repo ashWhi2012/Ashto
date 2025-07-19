@@ -11,6 +11,7 @@ import {
   View
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useFocusEffect } from 'expo-router';
 
 interface Exercise {
   id: string;
@@ -38,8 +39,10 @@ export default function WorkoutTracker() {
   const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [exerciseTypes, setExerciseTypes] = useState<any[]>([]);
+  const [categories, setCategories] = useState<string[]>(['Arms', 'Legs', 'Chest', 'Back', 'Shoulders', 'Core', 'Cardio']);
   const [showEditExercise, setShowEditExercise] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
+  const [workoutRetentionWeeks, setWorkoutRetentionWeeks] = useState(4);
   
   // Form states
   const [exerciseName, setExerciseName] = useState('');
@@ -50,7 +53,16 @@ export default function WorkoutTracker() {
   useEffect(() => {
     loadWorkouts();
     loadExerciseTypes();
+    loadWorkoutRetention();
+    loadCategories();
   }, []);
+
+  // Reload categories when tab becomes active (to sync with Settings changes)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCategories();
+    }, [])
+  );
 
   const loadWorkouts = async () => {
     try {
@@ -130,13 +142,18 @@ export default function WorkoutTracker() {
 
 
 
-  const getWorkoutsFromLast4Weeks = () => {
-    const fourWeeksAgo = new Date();
-    fourWeeksAgo.setDate(fourWeeksAgo.getDate() - 28);
+  const getFilteredWorkouts = () => {
+    // If retention is set to "Forever" (-1), return all workouts
+    if (workoutRetentionWeeks === -1) {
+      return workouts.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }
+    
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - (workoutRetentionWeeks * 7));
     
     return workouts.filter(workout => {
       const workoutDate = new Date(workout.date);
-      return workoutDate >= fourWeeksAgo;
+      return workoutDate >= cutoffDate;
     }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   };
 
@@ -171,6 +188,28 @@ export default function WorkoutTracker() {
       }
     } catch (error) {
       console.error('Error loading exercise types:', error);
+    }
+  };
+
+  const loadWorkoutRetention = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('workoutRetentionWeeks');
+      if (stored) {
+        setWorkoutRetentionWeeks(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading workout retention:', error);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const stored = await AsyncStorage.getItem('exerciseCategories');
+      if (stored) {
+        setCategories(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error('Error loading categories:', error);
     }
   };
 
@@ -354,7 +393,7 @@ export default function WorkoutTracker() {
             style={styles.historyButton} 
             onPress={() => setShowWorkoutHistory(true)}
           >
-            <Text style={styles.buttonText}>View Workout History (4 weeks)</Text>
+            <Text style={styles.buttonText}>View Workout History</Text>
           </Pressable>
 
           <Pressable 
@@ -365,7 +404,7 @@ export default function WorkoutTracker() {
           </Pressable>
           
           <Text style={styles.sectionTitle}>Recent Workouts</Text>
-          {getWorkoutsFromLast4Weeks().slice(0, 3).map((workout) => (
+          {getFilteredWorkouts().slice(0, 3).map((workout) => (
             <Pressable 
               key={workout.id} 
               style={styles.workoutCard}
@@ -381,8 +420,8 @@ export default function WorkoutTracker() {
             </Pressable>
           ))}
           
-          {getWorkoutsFromLast4Weeks().length === 0 && (
-            <Text style={styles.noWorkoutsText}>No workouts in the last 4 weeks</Text>
+          {getFilteredWorkouts().length === 0 && (
+            <Text style={styles.noWorkoutsText}>No recent workouts</Text>
           )}
         </View>
       ) : (
@@ -490,7 +529,7 @@ export default function WorkoutTracker() {
         <View style={styles.modalOverlay}>
           <View style={styles.historyModalContent}>
             <Text style={styles.modalTitle}>
-              {selectedWorkout ? 'Workout Details' : 'Workout History (4 weeks)'}
+              {selectedWorkout ? 'Workout Details' : 'Workout History'}
             </Text>
             
             {selectedWorkout ? (
@@ -535,7 +574,7 @@ export default function WorkoutTracker() {
               </ScrollView>
             ) : (
               <ScrollView style={styles.historyScroll}>
-                {getWorkoutsFromLast4Weeks().map((workout) => (
+                {getFilteredWorkouts().map((workout) => (
                   <View key={workout.id} style={styles.historyWorkoutCard}>
                     <Pressable 
                       style={styles.workoutCardContent}
@@ -560,9 +599,9 @@ export default function WorkoutTracker() {
                   </View>
                 ))}
                 
-                {getWorkoutsFromLast4Weeks().length === 0 && (
+                {getFilteredWorkouts().length === 0 && (
                   <Text style={styles.noHistoryText}>
-                    No workouts found in the last 4 weeks
+                    No workouts found
                   </Text>
                 )}
               </ScrollView>
@@ -598,36 +637,38 @@ export default function WorkoutTracker() {
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Generate Workout</Text>
             
-            {['Arms', 'Legs', 'Chest', 'Back', 'Shoulders', 'Core'].map(category => {
-              const count = getExercisesByCategory(category).length;
-              return (
-                <View key={category} style={styles.generateOption}>
-                  <Text style={styles.generateCategoryTitle}>
-                    {category} ({count} exercises available)
-                  </Text>
-                  <View style={styles.generateButtons}>
-                    {[3, 4, 5].map(exerciseCount => (
-                      <Pressable
-                        key={exerciseCount}
-                        style={[
-                          styles.generateCountButton,
-                          count < exerciseCount && styles.disabledButton
-                        ]}
-                        onPress={() => generateWorkout(category, exerciseCount)}
-                        disabled={count < exerciseCount}
-                      >
-                        <Text style={[
-                          styles.generateCountText,
-                          count < exerciseCount && styles.disabledText
-                        ]}>
-                          {exerciseCount} exercises
-                        </Text>
-                      </Pressable>
-                    ))}
+            <ScrollView style={styles.generateScrollView} showsVerticalScrollIndicator={true}>
+              {categories.map(category => {
+                const count = getExercisesByCategory(category).length;
+                return (
+                  <View key={category} style={styles.generateOption}>
+                    <Text style={styles.generateCategoryTitle}>
+                      {category} ({count} exercises available)
+                    </Text>
+                    <View style={styles.generateButtons}>
+                      {[3, 4, 5].map(exerciseCount => (
+                        <Pressable
+                          key={exerciseCount}
+                          style={[
+                            styles.generateCountButton,
+                            count < exerciseCount && styles.disabledButton
+                          ]}
+                          onPress={() => generateWorkout(category, exerciseCount)}
+                          disabled={count < exerciseCount}
+                        >
+                          <Text style={[
+                            styles.generateCountText,
+                            count < exerciseCount && styles.disabledText
+                          ]}>
+                            {exerciseCount} exercises
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
                   </View>
-                </View>
-              );
-            })}
+                );
+              })}
+            </ScrollView>
             
             <Pressable 
               style={styles.closeButton}
@@ -1088,5 +1129,9 @@ const createStyles = (theme: any) => StyleSheet.create({
     padding: 15,
     borderRadius: 10,
     flex: 1
+  },
+  generateScrollView: {
+    maxHeight: 400,
+    marginBottom: 10,
   }
 })
