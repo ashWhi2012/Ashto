@@ -25,7 +25,7 @@ export default function TabLayout() {
 
             <Tabs.Screen name='notes' options={{
                 //unmountOnBlur: true,
-                title: 'Notes',
+                title: 'History',
                 tabBarIcon: ({ color, focused }) => (
                     <FontAwesome name={focused ? 'home' :
                         'home'} color={color} size={24} />

@@ -203,7 +203,40 @@ export default function WorkoutTypesManager() {
     return exerciseTypes.filter((ex) => ex.category === category);
   };
 
-  const generateWorkout = (category: string, exerciseCount: number) => {
+  const findLastExerciseData = async (exerciseName: string) => {
+    try {
+      const stored = await AsyncStorage.getItem("workouts");
+      if (!stored) return null;
+
+      const workouts = JSON.parse(stored);
+      // Find the most recent workout that contains this exercise
+      const sortedWorkouts = [...workouts].sort(
+        (a: any, b: any) =>
+          new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      for (const workout of sortedWorkouts) {
+        const exercise = workout.exercises.find(
+          (ex: any) => ex.name === exerciseName
+        );
+        if (exercise) {
+          return {
+            sets: exercise.sets,
+            reps: exercise.reps,
+            weight: exercise.weight,
+            lastDate: workout.date,
+          };
+        }
+      }
+
+      return null; // No previous data found
+    } catch (error) {
+      console.error("Error finding last exercise data:", error);
+      return null;
+    }
+  };
+
+  const generateWorkout = async (category: string, exerciseCount: number) => {
     const categoryExercises = getExercisesByCategory(category);
     if (categoryExercises.length < exerciseCount) {
       Alert.alert(
@@ -217,15 +250,49 @@ export default function WorkoutTypesManager() {
     const shuffled = [...categoryExercises].sort(() => 0.5 - Math.random());
     const selectedExercises = shuffled.slice(0, exerciseCount);
 
-    // Navigate to workout with pre-selected exercises
-    // This would integrate with your existing workout tracker
-    Alert.alert(
-      "Workout Generated!",
-      `Generated ${category} workout with: ${selectedExercises
-        .map((ex) => ex.name)
-        .join(", ")}`,
-      [{ text: "OK", onPress: () => setShowGenerateWorkout(false) }]
-    );
+    // Check for previous data for each exercise and create detailed information
+    const exercisesWithHistory = [];
+    const exercisesWithoutHistory = [];
+    const exerciseDetails = [];
+
+    for (const exercise of selectedExercises) {
+      const previousData = await findLastExerciseData(exercise.name);
+      if (previousData) {
+        exercisesWithHistory.push(exercise);
+        const lastDate = new Date(previousData.lastDate).toLocaleDateString();
+        exerciseDetails.push(
+          `${exercise.name}: ${previousData.sets} sets × ${previousData.reps} reps @ ${previousData.weight}lbs (from ${lastDate})`
+        );
+      } else {
+        exercisesWithoutHistory.push(exercise);
+        exerciseDetails.push(
+          `${exercise.name}: 3 sets × 10 reps @ 0lbs (default)`
+        );
+      }
+    }
+
+    // Create detailed alert message
+    let alertMessage = `Generated ${category} workout with ${selectedExercises.length} exercises:`;
+    alertMessage += `\n\n${exerciseDetails.join("\n")}`;
+
+    if (exercisesWithHistory.length > 0) {
+      alertMessage += `\n\n✅ ${exercisesWithHistory.length} exercise${
+        exercisesWithHistory.length > 1 ? "s" : ""
+      } will be auto-filled from previous workouts`;
+    }
+
+    if (exercisesWithoutHistory.length > 0) {
+      alertMessage += `\n\n🆕 ${exercisesWithoutHistory.length} new exercise${
+        exercisesWithoutHistory.length > 1 ? "s" : ""
+      } will use default values`;
+    }
+
+    alertMessage +=
+      "\n\nGo to the Workout tab to start this workout with auto-filled data!";
+
+    Alert.alert("Workout Generated!", alertMessage, [
+      { text: "OK", onPress: () => setShowGenerateWorkout(false) },
+    ]);
   };
 
   const styles = createStyles(theme);
