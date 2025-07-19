@@ -41,8 +41,10 @@ export default function WorkoutTypesManager() {
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [showAddExercise, setShowAddExercise] = useState(false);
+  const [showEditExercise, setShowEditExercise] = useState(false);
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
+  const [editingExercise, setEditingExercise] = useState<ExerciseType | null>(null);
 
   // Form states
   const [exerciseName, setExerciseName] = useState("");
@@ -179,6 +181,42 @@ export default function WorkoutTypesManager() {
     setExerciseDescription("");
     setShowAddExercise(false);
     Alert.alert("Success", "Exercise added successfully!");
+  };
+
+  const startEditExercise = (exercise: ExerciseType) => {
+    setEditingExercise(exercise);
+    setExerciseName(exercise.name);
+    setExerciseCategory(exercise.category);
+    setExerciseDescription(exercise.description || "");
+    setShowEditExercise(true);
+  };
+
+  const updateExercise = () => {
+    if (!exerciseName.trim()) {
+      Alert.alert("Error", "Please enter an exercise name");
+      return;
+    }
+
+    if (!editingExercise) return;
+
+    const updatedExercises = exerciseTypes.map((ex) =>
+      ex.id === editingExercise.id
+        ? {
+            ...ex,
+            name: exerciseName.trim(),
+            category: exerciseCategory,
+            description: exerciseDescription.trim(),
+          }
+        : ex
+    );
+
+    saveExerciseTypes(updatedExercises);
+    
+    setExerciseName("");
+    setExerciseDescription("");
+    setEditingExercise(null);
+    setShowEditExercise(false);
+    Alert.alert("Success", "Exercise updated successfully!");
   };
 
   const deleteExerciseType = (id: string) => {
@@ -332,12 +370,20 @@ export default function WorkoutTypesManager() {
                     </Text>
                   )}
                 </View>
-                <Pressable
-                  style={styles.deleteButton}
-                  onPress={() => deleteExerciseType(exercise.id)}
-                >
-                  <Text style={styles.deleteButtonText}>×</Text>
-                </Pressable>
+                <View style={styles.exerciseActions}>
+                  <Pressable
+                    style={styles.editButton}
+                    onPress={() => startEditExercise(exercise)}
+                  >
+                    <Text style={styles.editButtonText}>✏️</Text>
+                  </Pressable>
+                  <Pressable
+                    style={styles.deleteButton}
+                    onPress={() => deleteExerciseType(exercise.id)}
+                  >
+                    <Text style={styles.deleteButtonText}>×</Text>
+                  </Pressable>
+                </View>
               </View>
             ))}
             {categoryExercises.length === 0 && (
@@ -410,6 +456,78 @@ export default function WorkoutTypesManager() {
                 onPress={addExerciseType}
               >
                 <Text style={styles.buttonText}>Add Exercise</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Edit Exercise Modal */}
+      <Modal visible={showEditExercise} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Edit Exercise</Text>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Exercise name"
+              value={exerciseName}
+              onChangeText={setExerciseName}
+            />
+
+            <Text style={styles.inputLabel}>Category:</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.categorySelector}
+            >
+              {categories.map((category) => (
+                <Pressable
+                  key={category}
+                  style={[
+                    styles.categoryOption,
+                    exerciseCategory === category && styles.selectedCategory,
+                  ]}
+                  onPress={() => setExerciseCategory(category)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryOptionText,
+                      exerciseCategory === category &&
+                        styles.selectedCategoryText,
+                    ]}
+                  >
+                    {category}
+                  </Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+
+            <TextInput
+              style={[styles.input, styles.descriptionInput]}
+              placeholder="Description (optional)"
+              value={exerciseDescription}
+              onChangeText={setExerciseDescription}
+              multiline
+            />
+
+            <View style={styles.modalButtons}>
+              <Pressable
+                style={[styles.modalButton, styles.cancelButton]}
+                onPress={() => {
+                  setShowEditExercise(false);
+                  setExerciseName("");
+                  setExerciseDescription("");
+                  setEditingExercise(null);
+                }}
+              >
+                <Text style={styles.buttonText}>Cancel</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalButton, styles.updateButton]}
+                onPress={updateExercise}
+              >
+                <Text style={styles.buttonText}>Update Exercise</Text>
               </Pressable>
             </View>
           </View>
@@ -546,6 +664,21 @@ const createStyles = (theme: any) =>
       color: theme.textSecondary,
       marginTop: 5,
     },
+    exerciseActions: {
+      flexDirection: "row",
+      gap: 10,
+    },
+    editButton: {
+      backgroundColor: theme.secondary,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    editButtonText: {
+      fontSize: 14,
+    },
     deleteButton: {
       backgroundColor: theme.error,
       width: 30,
@@ -646,6 +779,9 @@ const createStyles = (theme: any) =>
     },
     addModalButton: {
       backgroundColor: theme.success,
+    },
+    updateButton: {
+      backgroundColor: theme.primary,
     },
     generateOption: {
       marginBottom: 20,

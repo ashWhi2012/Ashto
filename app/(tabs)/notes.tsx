@@ -941,7 +941,7 @@ const createStyles = (theme: any) =>
       backgroundColor: theme.secondary,
       padding: 12,
       borderRadius: 8,
-      marginBottom: 20,
+      flex: 1,
     },
     exerciseCard: {
       backgroundColor: theme.surface,
@@ -1222,8 +1222,7 @@ const createStyles = (theme: any) =>
       borderRadius: 8,
       justifyContent: "center",
       alignItems: "center",
-      // marginLeft: 10,
-      // marginTop: 10,
+      marginRight: 10,
       padding: 5,
     },
     deleteWorkoutText: {
