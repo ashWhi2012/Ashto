@@ -12,17 +12,22 @@ import { useTheme } from '../contexts/ThemeContext';
 import { UserProfile, WorkoutData } from '../utils/calorieCalculator';
 
 export interface CalorieCalculationResult {
+  success: boolean;
   totalCalories: number;
   exerciseBreakdown: Array<{
     name: string;
     calories: number;
     intensity: string;
     metValue: number;
+    error?: string;
   }>;
   averageMET: number;
   calculationMethod: 'complete_profile' | 'default_values';
   profileCompleteness: number;
   recommendations?: string[];
+  errors: string[];
+  warnings: string[];
+  fallbacksUsed: string[];
 }
 
 export interface WorkoutSummaryModalProps {
@@ -211,6 +216,40 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               </View>
             </View>
 
+            {/* Error Messages */}
+            {calorieResult.errors.length > 0 && (
+              <View style={styles.errorSection}>
+                <Text style={styles.errorIcon}>❌</Text>
+                <View style={styles.errorContent}>
+                  <Text style={styles.errorTitle}>
+                    Calculation Errors
+                  </Text>
+                  {calorieResult.errors.map((error, index) => (
+                    <Text key={index} style={styles.errorText}>
+                      • {error}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {/* Warning Messages */}
+            {calorieResult.warnings.length > 0 && (
+              <View style={styles.warningSection}>
+                <Text style={styles.warningIcon}>⚠️</Text>
+                <View style={styles.warningContent}>
+                  <Text style={styles.warningTitle}>
+                    Calculation Warnings
+                  </Text>
+                  {calorieResult.warnings.map((warning, index) => (
+                    <Text key={index} style={styles.warningText}>
+                      • {warning}
+                    </Text>
+                  ))}
+                </View>
+              </View>
+            )}
+
             {/* Profile Status Warning */}
             {isUsingDefaults && (
               <View style={styles.warningSection}>
@@ -225,6 +264,23 @@ export const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                   <Text style={styles.warningSubtext}>
                     Profile completeness: {calorieResult.profileCompleteness}%
                   </Text>
+                </View>
+              </View>
+            )}
+
+            {/* Fallbacks Used */}
+            {calorieResult.fallbacksUsed.length > 0 && (
+              <View style={styles.infoSection}>
+                <Text style={styles.infoIcon}>ℹ️</Text>
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>
+                    Fallbacks Applied
+                  </Text>
+                  {calorieResult.fallbacksUsed.map((fallback, index) => (
+                    <Text key={index} style={styles.infoText}>
+                      • {fallback}
+                    </Text>
+                  ))}
                 </View>
               </View>
             )}
@@ -445,6 +501,66 @@ const createStyles = (theme: any) => StyleSheet.create({
   warningSubtext: {
     fontSize: 12,
     color: theme.textSecondary,
+  },
+  errorSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: theme.error + '15',
+    margin: 20,
+    padding: 15,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.error,
+  },
+  errorIcon: {
+    fontSize: 20,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  errorContent: {
+    flex: 1,
+  },
+  errorTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text,
+    marginBottom: 4,
+  },
+  errorText: {
+    fontSize: 14,
+    color: theme.text,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  infoSection: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: theme.primary + '15',
+    margin: 20,
+    padding: 15,
+    borderRadius: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: theme.primary,
+  },
+  infoIcon: {
+    fontSize: 20,
+    marginRight: 12,
+    marginTop: 2,
+  },
+  infoContent: {
+    flex: 1,
+  },
+  infoTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: theme.text,
+    marginBottom: 4,
+  },
+  infoText: {
+    fontSize: 14,
+    color: theme.text,
+    lineHeight: 20,
+    marginBottom: 4,
   },
   breakdownSection: {
     paddingHorizontal: 20,

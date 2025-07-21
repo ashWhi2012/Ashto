@@ -7,6 +7,14 @@
  * - Mifflin-St Jeor Equation
  */
 
+import { 
+  CalorieTrackingError, 
+  ErrorLogger, 
+  createCalculationError,
+  createValidationError,
+  withGracefulDegradation 
+} from './errorHandling';
+
 export interface UserProfile {
   age: number;
   sex: 'male' | 'female' | 'other';
@@ -218,69 +226,368 @@ function calculateExerciseCalories(
 }
 
 /**
- * Main function to calculate total calories burned during workout
+ * Error types for calorie calculation failures
  */
-export function calculateWorkoutCalories(
-  workoutData: WorkoutData,
-  userProfile: UserProfile,
-  exerciseCategories: { [exerciseName: string]: string } = {}
-): {
+export enum CalorieCalculationErrorType {
+  INVALID_WORKOUT_DATA = 'INVALID_WORKOUT_DATA',
+  INVALID_USER_PROFILE = 'INVALID_USER_PROFILE',
+  CALCULATION_OVERFLOW = 'CALCULATION_OVERFLOW',
+  MISSING_EXERCISE_DATA = 'MISSING_EXERCISE_DATA',
+  INVALID_DURATION = 'INVALID_DURATION',
+  GENERAL_ERROR = 'GENERAL_ERROR'
+}
+
+export class CalorieCalculationError extends Error {
+  public readonly type: CalorieCalculationErrorType;
+  public readonly details: any;
+
+  constructor(type: CalorieCalculationErrorType, message: string, details?: any) {
+    super(message);
+    this.name = 'CalorieCalculationError';
+    this.type = type;
+    this.details = details;
+  }
+}
+
+/**
+ * Result interface for calorie calculations with error handling
+ */
+export interface CalorieCalculationResult {
+  success: boolean;
   totalCalories: number;
   exerciseBreakdown: Array<{
     name: string;
     calories: number;
     intensity: string;
     metValue: number;
+    error?: string;
   }>;
   averageMET: number;
-} {
-  const { exercises, duration } = workoutData;
-  
-  if (exercises.length === 0) {
-    return {
-      totalCalories: 0,
-      exerciseBreakdown: [],
-      averageMET: 0
-    };
+  errors: string[];
+  warnings: string[];
+  fallbacksUsed: string[];
+}
+
+/**
+ * Validate workout data before calculation
+ */
+function validateWorkoutData(workoutData: WorkoutData): ValidationResult {
+  const errors: string[] = [];
+
+  if (!workoutData) {
+    errors.push('Workout data is required');
+    return { isValid: false, errors };
   }
-  
-  // Calculate time per exercise (assuming equal distribution)
-  const timePerExercise = duration / exercises.length;
-  
-  let totalCalories = 0;
-  let totalMET = 0;
-  const exerciseBreakdown = [];
-  
-  for (const exercise of exercises) {
-    const category = exerciseCategories[exercise.name] || 'default';
-    const intensity = determineIntensity(exercise, userProfile.weight);
-    const metValue = getMETValue(exercise, intensity, category);
-    
-    const exerciseCalories = calculateExerciseCalories(
-      exercise,
-      userProfile,
-      category,
-      timePerExercise
-    );
-    
-    totalCalories += exerciseCalories;
-    totalMET += metValue;
-    
-    exerciseBreakdown.push({
-      name: exercise.name,
-      calories: Math.round(exerciseCalories),
-      intensity,
-      metValue: Math.round(metValue * 10) / 10
+
+  if (!workoutData.exercises || !Array.isArray(workoutData.exercises)) {
+    errors.push('Exercises array is required');
+  } else if (workoutData.exercises.length === 0) {
+    errors.push('At least one exercise is required');
+  } else {
+    // Validate each exercise
+    workoutData.exercises.forEach((exercise, index) => {
+      if (!exercise.name || typeof exercise.name !== 'string') {
+        errors.push(`Exercise ${index + 1}: Name is required`);
+      }
+      if (typeof exercise.sets !== 'number' || exercise.sets < 0) {
+        errors.push(`Exercise ${index + 1}: Sets must be a non-negative number`);
+      }
+      if (typeof exercise.reps !== 'number' || exercise.reps < 0) {
+        errors.push(`Exercise ${index + 1}: Reps must be a non-negative number`);
+      }
+      if (typeof exercise.weight !== 'number' || exercise.weight < 0) {
+        errors.push(`Exercise ${index + 1}: Weight must be a non-negative number`);
+      }
     });
   }
+
+  if (typeof workoutData.duration !== 'number' || workoutData.duration <= 0) {
+    errors.push('Duration must be a positive number');
+  } else if (workoutData.duration > 1440) { // 24 hours in minutes
+    errors.push('Duration cannot exceed 24 hours');
+  }
+
+  return { isValid: errors.length === 0, errors };
+}
+
+/**
+ * Validate user profile for calorie calculations
+ */
+function validateProfileForCalculation(userProfile: UserProfile): ValidationResult {
+  const errors: string[] = [];
+
+  if (!userProfile) {
+    errors.push('User profile is required');
+    return { isValid: false, errors };
+  }
+
+  if (typeof userProfile.weight !== 'number' || userProfile.weight <= 0) {
+    errors.push('Valid weight is required for calorie calculation');
+  } else if (userProfile.weight > 1000) { // Sanity check
+    errors.push('Weight value appears to be invalid');
+  }
+
+  if (typeof userProfile.age !== 'number' || userProfile.age <= 0) {
+    errors.push('Valid age is required for calorie calculation');
+  } else if (userProfile.age > 150) { // Sanity check
+    errors.push('Age value appears to be invalid');
+  }
+
+  if (typeof userProfile.height !== 'number' || userProfile.height <= 0) {
+    errors.push('Valid height is required for calorie calculation');
+  } else if (userProfile.height > 300) { // Sanity check
+    errors.push('Height value appears to be invalid');
+  }
+
+  if (!userProfile.sex || !['male', 'female', 'other'].includes(userProfile.sex)) {
+    errors.push('Valid sex is required for calorie calculation');
+  }
+
+  return { isValid: errors.length === 0, errors };
+}
+
+/**
+ * Safe math operations to prevent overflow
+ */
+function safeMultiply(a: number, b: number, maxResult: number = 100000): number {
+  if (!Number.isFinite(a) || !Number.isFinite(b)) {
+    throw new CalorieCalculationError(
+      CalorieCalculationErrorType.CALCULATION_OVERFLOW,
+      'Invalid numbers in calculation'
+    );
+  }
+
+  const result = a * b;
   
-  const averageMET = totalMET / exercises.length;
+  if (!Number.isFinite(result) || result > maxResult) {
+    throw new CalorieCalculationError(
+      CalorieCalculationErrorType.CALCULATION_OVERFLOW,
+      'Calculation result exceeds safe limits'
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Calculate calories for a single exercise with error handling
+ */
+function calculateExerciseCaloriesSafe(
+  exercise: any,
+  userProfile: UserProfile,
+  exerciseCategory: string,
+  durationMinutes: number
+): { calories: number; error?: string; warnings: string[] } {
+  const warnings: string[] = [];
   
-  return {
-    totalCalories: Math.round(totalCalories),
-    exerciseBreakdown,
-    averageMET: Math.round(averageMET * 10) / 10
-  };
+  try {
+    // Validate inputs
+    if (durationMinutes <= 0) {
+      return { 
+        calories: 0, 
+        error: 'Invalid duration', 
+        warnings: ['Duration must be positive'] 
+      };
+    }
+
+    if (durationMinutes > 480) { // 8 hours
+      warnings.push('Exercise duration is unusually long');
+    }
+
+    const intensity = determineIntensity(exercise, userProfile.weight);
+    const metValue = getMETValue(exercise, intensity, exerciseCategory);
+    
+    // Safe calorie calculation with bounds checking
+    const caloriesPerHour = safeMultiply(metValue, userProfile.weight, 10000);
+    const caloriesForDuration = safeMultiply(caloriesPerHour, durationMinutes / 60, 50000);
+    
+    // Apply adjustments with bounds checking
+    const sexAdjustedCalories = applySexBasedAdjustment(caloriesForDuration, userProfile.sex);
+    
+    const bmi = calculateBMI(userProfile.weight, userProfile.height);
+    const finalCalories = applyBMIBasedAdjustment(sexAdjustedCalories, bmi);
+    
+    // Sanity check on final result
+    if (finalCalories > 5000) { // Very high calorie burn per exercise
+      warnings.push('Unusually high calorie burn calculated');
+    }
+    
+    return { 
+      calories: Math.max(0, finalCalories), 
+      warnings 
+    };
+    
+  } catch (error) {
+    if (error instanceof CalorieCalculationError) {
+      return { 
+        calories: 0, 
+        error: error.message, 
+        warnings: ['Fallback to 0 calories due to calculation error'] 
+      };
+    }
+    
+    return { 
+      calories: 0, 
+      error: 'Unknown calculation error', 
+      warnings: ['Unexpected error during calculation'] 
+    };
+  }
+}
+
+/**
+ * Main function to calculate total calories burned during workout with comprehensive error handling
+ */
+export function calculateWorkoutCalories(
+  workoutData: WorkoutData,
+  userProfile: UserProfile,
+  exerciseCategories: { [exerciseName: string]: string } = {}
+): CalorieCalculationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const fallbacksUsed: string[] = [];
+  
+  try {
+    // Validate inputs
+    const workoutValidation = validateWorkoutData(workoutData);
+    if (!workoutValidation.isValid) {
+      return {
+        success: false,
+        totalCalories: 0,
+        exerciseBreakdown: [],
+        averageMET: 0,
+        errors: workoutValidation.errors,
+        warnings,
+        fallbacksUsed
+      };
+    }
+
+    const profileValidation = validateProfileForCalculation(userProfile);
+    if (!profileValidation.isValid) {
+      return {
+        success: false,
+        totalCalories: 0,
+        exerciseBreakdown: [],
+        averageMET: 0,
+        errors: profileValidation.errors,
+        warnings,
+        fallbacksUsed
+      };
+    }
+
+    const { exercises, duration } = workoutData;
+    
+    if (exercises.length === 0) {
+      return {
+        success: true,
+        totalCalories: 0,
+        exerciseBreakdown: [],
+        averageMET: 0,
+        errors,
+        warnings: ['No exercises provided'],
+        fallbacksUsed
+      };
+    }
+    
+    // Calculate time per exercise (assuming equal distribution)
+    const timePerExercise = duration / exercises.length;
+    
+    let totalCalories = 0;
+    let totalMET = 0;
+    let successfulCalculations = 0;
+    const exerciseBreakdown = [];
+    
+    for (const exercise of exercises) {
+      try {
+        const category = exerciseCategories[exercise.name] || 'default';
+        
+        // Use fallback category if not found
+        if (!exerciseCategories[exercise.name]) {
+          fallbacksUsed.push(`Used default category for ${exercise.name}`);
+        }
+        
+        const intensity = determineIntensity(exercise, userProfile.weight);
+        const metValue = getMETValue(exercise, intensity, category);
+        
+        const exerciseResult = calculateExerciseCaloriesSafe(
+          exercise,
+          userProfile,
+          category,
+          timePerExercise
+        );
+        
+        // Collect warnings from individual exercise calculations
+        warnings.push(...exerciseResult.warnings);
+        
+        if (exerciseResult.error) {
+          errors.push(`${exercise.name}: ${exerciseResult.error}`);
+          exerciseBreakdown.push({
+            name: exercise.name,
+            calories: 0,
+            intensity,
+            metValue: Math.round(metValue * 10) / 10,
+            error: exerciseResult.error
+          });
+        } else {
+          totalCalories += exerciseResult.calories;
+          totalMET += metValue;
+          successfulCalculations++;
+          
+          exerciseBreakdown.push({
+            name: exercise.name,
+            calories: Math.round(exerciseResult.calories),
+            intensity,
+            metValue: Math.round(metValue * 10) / 10
+          });
+        }
+        
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        errors.push(`${exercise.name}: ${errorMessage}`);
+        
+        exerciseBreakdown.push({
+          name: exercise.name,
+          calories: 0,
+          intensity: 'unknown',
+          metValue: 0,
+          error: errorMessage
+        });
+      }
+    }
+    
+    // Calculate average MET only from successful calculations
+    const averageMET = successfulCalculations > 0 ? totalMET / successfulCalculations : 0;
+    
+    // Final validation of total calories
+    if (totalCalories > 10000) { // Sanity check for total workout calories
+      warnings.push('Total calorie burn is unusually high - please verify your profile data');
+    }
+    
+    const success = errors.length === 0 || successfulCalculations > 0;
+    
+    return {
+      success,
+      totalCalories: Math.round(Math.max(0, totalCalories)),
+      exerciseBreakdown,
+      averageMET: Math.round(averageMET * 10) / 10,
+      errors,
+      warnings,
+      fallbacksUsed
+    };
+    
+  } catch (error) {
+    // Catch-all error handler
+    const errorMessage = error instanceof Error ? error.message : 'Unknown calculation error';
+    
+    return {
+      success: false,
+      totalCalories: 0,
+      exerciseBreakdown: [],
+      averageMET: 0,
+      errors: [errorMessage],
+      warnings,
+      fallbacksUsed
+    };
+  }
 }
 
 /**

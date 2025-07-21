@@ -1,6 +1,21 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { createContext, useContext, useEffect, useState } from "react";
 import { UserProfile, ValidationResult, validateUserProfile } from "../utils/calorieCalculator";
+import {
+    ErrorLogger,
+    SafeAsyncStorage,
+    createValidationError,
+    withGracefulDegradation
+} from "../utils/errorHandling";
+
+/**
+ * Storage operation result with error handling
+ */
+interface StorageResult<T> {
+  success: boolean;
+  data?: T;
+  error?: string;
+  retryCount?: number;
+}
 
 interface ProfileValidationState {
   isValid: boolean;
@@ -10,16 +25,18 @@ interface ProfileValidationState {
 
 interface UserProfileContextType {
   userProfile: UserProfile | null;
-  setUserProfile: (profile: UserProfile) => void;
+  setUserProfile: (profile: UserProfile) => Promise<StorageResult<UserProfile>>;
   isProfileComplete: boolean;
   profileCompleteness: number;
   validationState: ProfileValidationState;
-  loadUserProfile: () => Promise<void>;
+  loadUserProfile: () => Promise<StorageResult<UserProfile>>;
   calculateProfileCompleteness: (profile: UserProfile | null) => number;
   validateProfile: (profile: Partial<UserProfile>) => ValidationResult;
   isProfileSufficientForCalculations: (profile: UserProfile | null) => boolean;
   getDefaultProfile: () => UserProfile;
   updateValidationState: (profile: UserProfile | null) => void;
+  storageError: string | null;
+  clearStorageError: () => void;
 }
 
 const UserProfileContext = createContext<UserProfileContextType | undefined>(
@@ -47,6 +64,7 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
     errors: [],
     lastValidated: null,
   });
+  const [storageError, setStorageError] = useState<string | null>(null);
 
   useEffect(() => {
     loadUserProfile();
@@ -56,25 +74,95 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
     updateValidationState(userProfile);
   }, [userProfile]);
 
-  const loadUserProfile = async () => {
-    try {
-      const stored = await AsyncStorage.getItem("userProfile");
-      if (stored) {
-        const profile = JSON.parse(stored);
-        setUserProfileState(profile);
+
+
+  const loadUserProfile = async (): Promise<StorageResult<UserProfile>> => {
+    const result = await SafeAsyncStorage.getItem<UserProfile>("userProfile");
+    
+    if (result.success) {
+      if (result.data) {
+        // Validate the loaded profile structure
+        const validation = withGracefulDegradation(
+          () => validateUserProfile(result.data!),
+          { isValid: false, errors: ['Profile validation failed'] },
+          'profile validation'
+        );
+        
+        if (!validation.isValid) {
+          console.warn('Loaded profile has validation issues:', validation.errors);
+          // Still set the profile but update validation state
+        }
+        
+        setUserProfileState(result.data);
+      } else {
+        // No profile stored - this is normal for new users
+        setUserProfileState(null);
       }
-    } catch (error) {
-      console.error("Error loading user profile:", error);
+      
+      setStorageError(null);
+    } else if (result.error) {
+      ErrorLogger.log(result.error);
+      setStorageError(result.error.details.userMessage);
     }
+
+    return {
+      success: result.success,
+      data: result.data || null,
+      error: result.error?.details.userMessage,
+      retryCount: result.retryCount
+    };
   };
 
-  const setUserProfile = async (profile: UserProfile) => {
-    try {
-      await AsyncStorage.setItem("userProfile", JSON.stringify(profile));
-      setUserProfileState(profile);
-    } catch (error) {
-      console.error("Error saving user profile:", error);
+  const setUserProfile = async (profile: UserProfile): Promise<StorageResult<UserProfile>> => {
+    // Validate profile before saving
+    const validation = withGracefulDegradation(
+      () => validateUserProfile(profile),
+      { isValid: false, errors: ['Profile validation failed'] },
+      'profile validation'
+    );
+    
+    if (!validation.isValid) {
+      const validationError = createValidationError(
+        'profile',
+        profile,
+        validation.errors.join(', ')
+      );
+      
+      ErrorLogger.log(validationError);
+      setStorageError(validationError.details.userMessage);
+      
+      return {
+        success: false,
+        error: validationError.details.userMessage
+      };
     }
+
+    // Add timestamp
+    const profileWithTimestamp = {
+      ...profile,
+      updatedAt: new Date().toISOString()
+    };
+
+    const result = await SafeAsyncStorage.setItem("userProfile", profileWithTimestamp);
+    
+    if (result.success) {
+      setUserProfileState(profileWithTimestamp);
+      setStorageError(null);
+    } else if (result.error) {
+      ErrorLogger.log(result.error);
+      setStorageError(result.error.details.userMessage);
+    }
+
+    return {
+      success: result.success,
+      data: result.success ? profileWithTimestamp : undefined,
+      error: result.error?.details.userMessage,
+      retryCount: result.retryCount
+    };
+  };
+
+  const clearStorageError = () => {
+    setStorageError(null);
   };
 
   const calculateProfileCompleteness = (profile: UserProfile | null): number => {
@@ -148,6 +236,8 @@ export const UserProfileProvider: React.FC<UserProfileProviderProps> = ({
         isProfileSufficientForCalculations,
         getDefaultProfile,
         updateValidationState,
+        storageError,
+        clearStorageError,
       }}
     >
       {children}

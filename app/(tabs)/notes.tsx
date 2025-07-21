@@ -11,11 +11,13 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CalorieCalculationErrorBoundary } from "../../components/CalorieCalculationErrorBoundary";
 import { CalorieCalculationResult, WorkoutSummaryModal } from "../../components/WorkoutSummaryModal";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import { CalorieData, Exercise, WorkoutRecord } from "../../types/workout";
 import { calculateWorkoutCalories, WorkoutData } from "../../utils/calorieCalculator";
+import { createErrorFromException, ErrorLogger, withGracefulDegradation } from "../../utils/errorHandling";
 
 export default function WorkoutTracker() {
   const { theme } = useTheme();
@@ -153,8 +155,20 @@ export default function WorkoutTracker() {
       weight: profileToUse.weightUnit === 'lbs' ? profileToUse.weight * 0.453592 : profileToUse.weight
     };
 
-    // Calculate calories
-    const calorieResult = calculateWorkoutCalories(workoutData, profileForCalculation, exerciseCategories);
+    // Calculate calories with error handling
+    const calorieResult = withGracefulDegradation(
+      () => calculateWorkoutCalories(workoutData, profileForCalculation, exerciseCategories),
+      {
+        success: false,
+        totalCalories: 0,
+        exerciseBreakdown: [],
+        averageMET: 0,
+        errors: ['Calorie calculation failed - using fallback'],
+        warnings: ['Workout saved without calorie data'],
+        fallbacksUsed: ['Default calorie calculation fallback applied']
+      },
+      'workout calorie calculation'
+    );
 
     // Create calorie data for workout record
     const calorieData: CalorieData = {
@@ -885,15 +899,24 @@ export default function WorkoutTracker() {
         </View>
       </Modal>
 
-      {/* Workout Summary Modal */}
+      {/* Workout Summary Modal with Error Boundary */}
       {showWorkoutSummary && workoutSummaryData && calorieCalculationResult && (
-        <WorkoutSummaryModal
-          visible={showWorkoutSummary}
-          onClose={() => setShowWorkoutSummary(false)}
-          workoutData={workoutSummaryData}
-          calorieResult={calorieCalculationResult}
-          userProfile={userProfile}
-        />
+        <CalorieCalculationErrorBoundary
+          maxRetries={2}
+          retryDelay={1000}
+          onError={(error, errorInfo) => {
+            console.error('Error in WorkoutSummaryModal:', error, errorInfo);
+            ErrorLogger.log(createErrorFromException(error, 'WorkoutSummaryModal'));
+          }}
+        >
+          <WorkoutSummaryModal
+            visible={showWorkoutSummary}
+            onClose={() => setShowWorkoutSummary(false)}
+            workoutData={workoutSummaryData}
+            calorieResult={calorieCalculationResult}
+            userProfile={userProfile}
+          />
+        </CalorieCalculationErrorBoundary>
       )}
       {/* Edit Exercise Modal */}
       <Modal visible={showEditExercise} animationType="slide" transparent>
