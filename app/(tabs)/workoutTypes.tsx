@@ -620,7 +620,7 @@ const createStyles = (theme: any) =>
       marginBottom: 30,
     },
     buttonText: {
-      color: "white",
+      color: theme.buttonText,
       textAlign: "center",
       fontSize: 16,
       fontWeight: "bold",
@@ -688,7 +688,7 @@ const createStyles = (theme: any) =>
       alignItems: "center",
     },
     deleteButtonText: {
-      color: "white",
+      color: theme.buttonText,
       fontSize: 18,
       fontWeight: "bold",
     },
@@ -756,7 +756,7 @@ const createStyles = (theme: any) =>
       color: theme.text,
     },
     selectedCategoryText: {
-      color: "white",
+      color: theme.buttonText,
       fontWeight: "bold",
     },
     descriptionInput: {
@@ -811,7 +811,7 @@ const createStyles = (theme: any) =>
       opacity: 0.5,
     },
     generateCountText: {
-      color: "white",
+      color: theme.buttonText,
       textAlign: "center",
       fontSize: 12,
       fontWeight: "bold",

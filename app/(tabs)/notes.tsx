@@ -11,32 +11,22 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { CalorieCalculationResult, WorkoutSummaryModal } from "../../components/WorkoutSummaryModal";
 import { useTheme } from "../../contexts/ThemeContext";
-
-interface Exercise {
-  id: string;
-  name: string;
-  sets: number;
-  reps: number;
-  weight: number;
-}
-
-interface Workout {
-  id: string;
-  date: string;
-  exercises: Exercise[];
-  duration: number;
-}
+import { useUserProfile } from "../../contexts/UserProfileContext";
+import { CalorieData, Exercise, WorkoutRecord } from "../../types/workout";
+import { calculateWorkoutCalories, WorkoutData } from "../../utils/calorieCalculator";
 
 export default function WorkoutTracker() {
   const { theme } = useTheme();
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const { userProfile, isProfileComplete, profileCompleteness, getDefaultProfile } = useUserProfile();
+  const [workouts, setWorkouts] = useState<WorkoutRecord[]>([]);
   const [currentWorkout, setCurrentWorkout] = useState<Exercise[]>([]);
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
   const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showWorkoutHistory, setShowWorkoutHistory] = useState(false);
-  const [selectedWorkout, setSelectedWorkout] = useState<Workout | null>(null);
+  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutRecord | null>(null);
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [exerciseTypes, setExerciseTypes] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([
@@ -51,6 +41,11 @@ export default function WorkoutTracker() {
   const [showEditExercise, setShowEditExercise] = useState(false);
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [workoutRetentionWeeks, setWorkoutRetentionWeeks] = useState(4);
+
+  // Workout summary modal states
+  const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
+  const [workoutSummaryData, setWorkoutSummaryData] = useState<WorkoutData | null>(null);
+  const [calorieCalculationResult, setCalorieCalculationResult] = useState<CalorieCalculationResult | null>(null);
 
   // Form states
   const [exerciseName, setExerciseName] = useState("");
@@ -83,7 +78,7 @@ export default function WorkoutTracker() {
     }
   };
 
-  const saveWorkouts = async (newWorkouts: Workout[]) => {
+  const saveWorkouts = async (newWorkouts: WorkoutRecord[]) => {
     try {
       await AsyncStorage.setItem("workouts", JSON.stringify(newWorkouts));
       setWorkouts(newWorkouts);
@@ -120,7 +115,7 @@ export default function WorkoutTracker() {
     setShowAddExercise(false);
   };
 
-  const finishWorkout = () => {
+  const finishWorkout = async () => {
     if (currentWorkout.length === 0) {
       Alert.alert("Error", "Add at least one exercise to finish workout");
       return;
@@ -130,20 +125,88 @@ export default function WorkoutTracker() {
       ? Math.round((new Date().getTime() - workoutStartTime.getTime()) / 60000)
       : 0;
 
-    const newWorkout: Workout = {
+    // Calculate calories burned
+    const workoutData: WorkoutData = {
+      exercises: currentWorkout.map(ex => ({
+        name: ex.name,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight: ex.weight
+      })),
+      duration
+    };
+
+    // Create exercise categories mapping
+    const exerciseCategories: { [exerciseName: string]: string } = {};
+    currentWorkout.forEach(exercise => {
+      const exerciseType = exerciseTypes.find(et => et.name === exercise.name);
+      exerciseCategories[exercise.name] = exerciseType?.category || 'default';
+    });
+
+    // Determine which profile to use for calculations
+    const profileToUse = userProfile && isProfileComplete ? userProfile : getDefaultProfile();
+    const isUsingDefaults = !userProfile || !isProfileComplete;
+
+    // Convert weight from lbs to kg if needed (app uses lbs, calculator expects kg)
+    const profileForCalculation = {
+      ...profileToUse,
+      weight: profileToUse.weightUnit === 'lbs' ? profileToUse.weight * 0.453592 : profileToUse.weight
+    };
+
+    // Calculate calories
+    const calorieResult = calculateWorkoutCalories(workoutData, profileForCalculation, exerciseCategories);
+
+    // Create calorie data for workout record
+    const calorieData: CalorieData = {
+      totalCalories: calorieResult.totalCalories,
+      calculationMethod: isUsingDefaults ? 'default_values' : 'complete_profile',
+      profileSnapshot: {
+        age: profileForCalculation.age,
+        sex: profileForCalculation.sex,
+        weight: profileForCalculation.weight,
+        height: profileForCalculation.height,
+        activityLevel: profileForCalculation.activityLevel
+      },
+      exerciseBreakdown: calorieResult.exerciseBreakdown,
+      averageMET: calorieResult.averageMET,
+      profileCompleteness: profileCompleteness
+    };
+
+    // Create new workout record with calorie data
+    const newWorkout: WorkoutRecord = {
       id: Date.now().toString(),
       date: new Date().toISOString(),
       exercises: currentWorkout,
       duration,
+      calorieData
     };
 
+    // Create calorie calculation result with additional metadata for modal
+    const calorieCalculationResult: CalorieCalculationResult = {
+      ...calorieResult,
+      calculationMethod: isUsingDefaults ? 'default_values' : 'complete_profile',
+      profileCompleteness: profileCompleteness,
+      recommendations: isUsingDefaults ? [
+        'Complete your profile in Settings for more accurate calorie calculations',
+        'Add your age, weight, height, and activity level for personalized results'
+      ] : undefined
+    };
+
+    // Save workout data
     const updatedWorkouts = [newWorkout, ...workouts];
     saveWorkouts(updatedWorkouts);
 
+    // Set state for workout summary modal
+    setWorkoutSummaryData(workoutData);
+    setCalorieCalculationResult(calorieCalculationResult);
+
+    // Reset workout state
     setIsWorkoutActive(false);
     setCurrentWorkout([]);
     setWorkoutStartTime(null);
-    Alert.alert("Success", "Workout saved!");
+
+    // Show workout summary modal instead of simple alert
+    setShowWorkoutSummary(true);
   };
 
   const getFilteredWorkouts = () => {
@@ -516,6 +579,11 @@ export default function WorkoutTracker() {
                   <Text style={styles.exerciseCount}>
                     {workout.exercises.length} exercises
                   </Text>
+                  {workout.calorieData && (
+                    <Text style={styles.calorieInfo}>
+                      {workout.calorieData.totalCalories} calories burned
+                    </Text>
+                  )}
                 </Pressable>
                 <Pressable
                   style={styles.deleteWorkoutButton}
@@ -651,6 +719,19 @@ export default function WorkoutTracker() {
                   <Text style={styles.workoutDetailsDuration}>
                     Duration: {selectedWorkout.duration} minutes
                   </Text>
+                  {selectedWorkout.calorieData && (
+                    <View style={styles.calorieDetailsSection}>
+                      <Text style={styles.calorieDetailsTitle}>
+                        Calories Burned: {selectedWorkout.calorieData.totalCalories}
+                      </Text>
+                      <Text style={styles.calorieDetailsMethod}>
+                        Calculation: {selectedWorkout.calorieData.calculationMethod === 'complete_profile' ? 'Personalized' : 'Default values'}
+                      </Text>
+                      <Text style={styles.calorieDetailsAvgMET}>
+                        Average MET: {selectedWorkout.calorieData.averageMET}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
                 <Text style={styles.exercisesTitle}>Exercises:</Text>
@@ -700,6 +781,11 @@ export default function WorkoutTracker() {
                         {workout.duration} minutes • {workout.exercises.length}{" "}
                         exercises
                       </Text>
+                      {workout.calorieData && (
+                        <Text style={styles.historyCalorieInfo}>
+                          {workout.calorieData.totalCalories} calories burned
+                        </Text>
+                      )}
                     </Pressable>
                     <Pressable
                       style={styles.deleteWorkoutButton}
@@ -799,6 +885,16 @@ export default function WorkoutTracker() {
         </View>
       </Modal>
 
+      {/* Workout Summary Modal */}
+      {showWorkoutSummary && workoutSummaryData && calorieCalculationResult && (
+        <WorkoutSummaryModal
+          visible={showWorkoutSummary}
+          onClose={() => setShowWorkoutSummary(false)}
+          workoutData={workoutSummaryData}
+          calorieResult={calorieCalculationResult}
+          userProfile={userProfile}
+        />
+      )}
       {/* Edit Exercise Modal */}
       <Modal visible={showEditExercise} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
@@ -883,7 +979,7 @@ const createStyles = (theme: any) =>
       marginBottom: 30,
     },
     buttonText: {
-      color: "white",
+      color: theme.buttonText,
       textAlign: "center",
       fontSize: 16,
       fontWeight: "bold",
@@ -923,6 +1019,12 @@ const createStyles = (theme: any) =>
     exerciseCount: {
       fontSize: 14,
       color: theme.textSecondary,
+    },
+    calorieInfo: {
+      fontSize: 14,
+      color: theme.primary,
+      fontWeight: "600",
+      marginTop: 2,
     },
     activeWorkoutTitle: {
       fontSize: 22,
@@ -1072,6 +1174,29 @@ const createStyles = (theme: any) =>
       color: theme.textSecondary,
       marginTop: 5,
     },
+    calorieDetailsSection: {
+      backgroundColor: theme.surface,
+      padding: 12,
+      borderRadius: 8,
+      marginTop: 10,
+      borderLeftWidth: 3,
+      borderLeftColor: theme.primary,
+    },
+    calorieDetailsTitle: {
+      fontSize: 16,
+      fontWeight: "bold",
+      color: theme.primary,
+      marginBottom: 5,
+    },
+    calorieDetailsMethod: {
+      fontSize: 14,
+      color: theme.textSecondary,
+      marginBottom: 2,
+    },
+    calorieDetailsAvgMET: {
+      fontSize: 14,
+      color: theme.textSecondary,
+    },
     exercisesTitle: {
       fontSize: 18,
       fontWeight: "bold",
@@ -1127,6 +1252,12 @@ const createStyles = (theme: any) =>
       fontSize: 14,
       color: theme.textSecondary,
       marginTop: 5,
+    },
+    historyCalorieInfo: {
+      fontSize: 14,
+      color: theme.primary,
+      fontWeight: "600",
+      marginTop: 2,
     },
     noHistoryText: {
       textAlign: "center",
@@ -1187,7 +1318,7 @@ const createStyles = (theme: any) =>
       opacity: 0.5,
     },
     generateCountText: {
-      color: "white",
+      color: theme.buttonText,
       textAlign: "center",
       fontSize: 12,
       fontWeight: "bold",
@@ -1211,7 +1342,7 @@ const createStyles = (theme: any) =>
       marginLeft: 10,
     },
     deleteExerciseText: {
-      color: "white",
+      color: theme.buttonText,
       fontSize: 18,
       fontWeight: "bold",
     },
