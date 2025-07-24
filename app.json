@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Workout Budyy",
-    "slug": "Workout Buddy",
+    "name": "Train Mate",
+    "slug": "Train Mate",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-fitness.png",
@@ -28,7 +28,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"

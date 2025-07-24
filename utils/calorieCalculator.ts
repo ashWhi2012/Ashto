@@ -318,9 +318,51 @@ function applySexBasedAdjustment(calories: number, sex: 'male' | 'female' | 'oth
 }
 
 /**
- * Calculate calories burned for a single exercise
+ * Calculate calories burned per set for strength training exercises
+ * Based on research showing calorie burn correlates with work performed (weight × reps)
  */
-function calculateExerciseCalories(
+function calculateStrengthTrainingCaloriesPerSet(
+  exercise: any,
+  userProfile: UserProfile,
+  exerciseCategory: string
+): number {
+  const { sets, reps, weight } = exercise;
+  
+  // Base calories per rep based on exercise category and weight used
+  let baseCaloriesPerRep = 0.5; // Default base value
+  
+  // Category-specific base calorie rates (calories per rep with bodyweight)
+  const categoryMultipliers = {
+    'legs': 1.8,      // Compound movements, large muscle groups
+    'back': 1.6,      // Pull-ups, rows - compound movements
+    'chest': 1.4,     // Push-ups, bench press - compound movements
+    'shoulders': 1.2, // Overhead movements
+    'arms': 1.0,      // Isolation movements
+    'core': 0.8,      // Core exercises
+    'default': 1.0
+  };
+  
+  const categoryMultiplier = categoryMultipliers[exerciseCategory.toLowerCase() as keyof typeof categoryMultipliers] || categoryMultipliers.default;
+  baseCaloriesPerRep *= categoryMultiplier;
+  
+  // Weight factor: additional calories based on weight used
+  // Research shows calorie burn increases with load
+  const weightFactor = weight > 0 ? 1 + (weight / userProfile.weight) * 0.3 : 1;
+  
+  // Rep factor: slight increase for higher rep ranges (muscular endurance)
+  const repFactor = reps > 12 ? 1.1 : reps > 8 ? 1.05 : 1.0;
+  
+  // Calculate calories per set
+  const caloriesPerSet = baseCaloriesPerRep * reps * weightFactor * repFactor;
+  
+  // Total calories for all sets
+  return caloriesPerSet * sets;
+}
+
+/**
+ * Calculate calories burned for cardio exercises based on duration and intensity
+ */
+function calculateCardioCalories(
   exercise: any,
   userProfile: UserProfile,
   exerciseCategory: string,
@@ -329,12 +371,35 @@ function calculateExerciseCalories(
   const intensity = determineIntensity(exercise, userProfile.weight);
   const metValue = getMETValue(exercise, intensity, exerciseCategory);
   
+  // For cardio, use duration from sets field (stored as minutes)
+  const actualDuration = exercise.sets || durationMinutes;
+  
   // Calorie calculation: MET × weight (kg) × time (hours)
   const caloriesPerHour = metValue * userProfile.weight;
-  const caloriesForDuration = caloriesPerHour * (durationMinutes / 60);
+  return caloriesPerHour * (actualDuration / 60);
+}
+
+/**
+ * Calculate calories burned for a single exercise (enhanced version)
+ */
+function calculateExerciseCalories(
+  exercise: any,
+  userProfile: UserProfile,
+  exerciseCategory: string,
+  durationMinutes: number
+): number {
+  let baseCalories: number;
+  
+  // Use different calculation methods based on exercise category
+  if (exerciseCategory.toLowerCase() === 'cardio') {
+    baseCalories = calculateCardioCalories(exercise, userProfile, exerciseCategory, durationMinutes);
+  } else {
+    // For strength training, use set/rep/weight-based calculation
+    baseCalories = calculateStrengthTrainingCaloriesPerSet(exercise, userProfile, exerciseCategory);
+  }
   
   // Apply sex-based metabolic adjustment
-  const sexAdjustedCalories = applySexBasedAdjustment(caloriesForDuration, userProfile.sex);
+  const sexAdjustedCalories = applySexBasedAdjustment(baseCalories, userProfile.sex);
   
   // Apply BMI-based metabolic adjustment
   const bmi = calculateBMI(userProfile.weight, userProfile.height);
@@ -417,8 +482,8 @@ function validateWorkoutData(workoutData: WorkoutData): ValidationResult {
     });
   }
 
-  if (typeof workoutData.duration !== 'number' || workoutData.duration <= 0) {
-    errors.push('Duration must be a positive number');
+  if (typeof workoutData.duration !== 'number' || workoutData.duration < 0) {
+    errors.push('Duration must be a non-negative number');
   } else if (workoutData.duration > 1440) { // 24 hours in minutes
     errors.push('Duration cannot exceed 24 hours');
   }
@@ -486,7 +551,7 @@ function safeMultiply(a: number, b: number, maxResult: number = 100000): number 
 }
 
 /**
- * Calculate calories for a single exercise with error handling
+ * Calculate calories for a single exercise with error handling (enhanced version)
  */
 function calculateExerciseCaloriesSafe(
   exercise: any,
@@ -497,39 +562,59 @@ function calculateExerciseCaloriesSafe(
   const warnings: string[] = [];
   
   try {
-    // Validate inputs
-    if (durationMinutes <= 0) {
+    // Validate exercise data
+    if (!exercise.sets || exercise.sets < 0) {
       return { 
         calories: 0, 
-        error: 'Invalid duration', 
-        warnings: ['Duration must be positive'] 
+        error: 'Invalid sets value', 
+        warnings: ['Sets must be a positive number'] 
       };
     }
 
-    if (durationMinutes > 480) { // 8 hours
-      warnings.push('Exercise duration is unusually long');
+    if (!exercise.reps || exercise.reps < 0) {
+      return { 
+        calories: 0, 
+        error: 'Invalid reps value', 
+        warnings: ['Reps must be a positive number'] 
+      };
     }
 
-    const intensity = determineIntensity(exercise, userProfile.weight);
-    const metValue = getMETValue(exercise, intensity, exerciseCategory);
+    if (exercise.weight < 0) {
+      return { 
+        calories: 0, 
+        error: 'Invalid weight value', 
+        warnings: ['Weight must be non-negative'] 
+      };
+    }
+
+    // Use the enhanced calculation method
+    const calculatedCalories = calculateExerciseCalories(
+      exercise,
+      userProfile,
+      exerciseCategory,
+      durationMinutes
+    );
     
-    // Safe calorie calculation with bounds checking
-    const caloriesPerHour = safeMultiply(metValue, userProfile.weight, 10000);
-    const caloriesForDuration = safeMultiply(caloriesPerHour, durationMinutes / 60, 50000);
+    // Sanity checks
+    if (exerciseCategory.toLowerCase() !== 'cardio') {
+      // For strength training, warn about unusually high values
+      if (exercise.sets > 10) {
+        warnings.push('High number of sets detected');
+      }
+      if (exercise.reps > 50) {
+        warnings.push('High number of reps detected');
+      }
+      if (exercise.weight > userProfile.weight * 2) {
+        warnings.push('Exercise weight is very high compared to body weight');
+      }
+    }
     
-    // Apply adjustments with bounds checking
-    const sexAdjustedCalories = applySexBasedAdjustment(caloriesForDuration, userProfile.sex);
-    
-    const bmi = calculateBMI(userProfile.weight, userProfile.height);
-    const finalCalories = applyBMIBasedAdjustment(sexAdjustedCalories, bmi);
-    
-    // Sanity check on final result
-    if (finalCalories > 5000) { // Very high calorie burn per exercise
-      warnings.push('Unusually high calorie burn calculated');
+    if (calculatedCalories > 1000) { // Very high calorie burn per exercise
+      warnings.push('Unusually high calorie burn calculated for single exercise');
     }
     
     return { 
-      calories: Math.max(0, finalCalories), 
+      calories: Math.max(0, calculatedCalories), 
       warnings 
     };
     

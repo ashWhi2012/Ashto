@@ -428,12 +428,12 @@ export default function WorkoutTypesManager() {
         <Text style={styles.buttonText}>Add New Exercise</Text>
       </Pressable>
 
-      <Pressable
+      {/* <Pressable
         style={styles.generateButton}
         onPress={() => setShowGenerateWorkout(true)}
       >
         <Text style={styles.buttonText}>Generate Workout</Text>
-      </Pressable>
+      </Pressable> */}
 
       {categories.map((category) => {
         const categoryExercises = getExercisesByCategory(category);

@@ -442,6 +442,100 @@ export default function WorkoutTracker() {
     Alert.alert("Workout Generated!", alertMessage);
   };
 
+  const addGeneratedExercises = (category: string, exerciseCount: number) => {
+    const categoryExercises = getExercisesByCategory(category);
+    if (categoryExercises.length < exerciseCount) {
+      Alert.alert(
+        "Error",
+        `Not enough exercises in ${category} category. Add more exercises in the Exercise Types tab first.`
+      );
+      return;
+    }
+
+    // Filter out exercises already in current workout to avoid duplicates
+    const currentExerciseNames = currentWorkout.map(ex => ex.name);
+    const availableExercises = categoryExercises.filter(
+      ex => !currentExerciseNames.includes(ex.name)
+    );
+
+    if (availableExercises.length < exerciseCount) {
+      Alert.alert(
+        "Limited Options",
+        `Only ${availableExercises.length} new exercises available in ${category} category (${currentExerciseNames.length} already in workout). Proceeding with available exercises.`
+      );
+    }
+
+    // Randomly select from available exercises
+    const shuffled = [...availableExercises].sort(() => 0.5 - Math.random());
+    const selectedExercises = shuffled.slice(0, Math.min(exerciseCount, availableExercises.length));
+
+    if (selectedExercises.length === 0) {
+      Alert.alert(
+        "No New Exercises",
+        `All ${category} exercises are already in your current workout.`
+      );
+      return;
+    }
+
+    // Create exercises with previous data if available, otherwise use defaults
+    const newExercises = selectedExercises.map((exerciseType: any) => {
+      const previousData = findLastExerciseData(exerciseType.name);
+
+      return {
+        id: Date.now().toString() + Math.random(),
+        name: exerciseType.name,
+        sets: previousData ? previousData.sets : 3,
+        reps: previousData ? previousData.reps : 10,
+        weight: previousData ? previousData.weight : 0,
+      };
+    });
+
+    // Add to current workout
+    setCurrentWorkout([...currentWorkout, ...newExercises]);
+    setShowGenerateWorkout(false);
+
+    // Create informative alert
+    const exercisesWithHistory = [];
+    const exercisesWithoutHistory = [];
+    const exerciseDetails = [];
+
+    for (const exerciseType of selectedExercises) {
+      const previousData = findLastExerciseData(exerciseType.name);
+      if (previousData) {
+        exercisesWithHistory.push(exerciseType);
+        const lastDate = new Date(previousData.lastDate).toLocaleDateString();
+        exerciseDetails.push(
+          `${exerciseType.name}: ${previousData.sets} sets × ${previousData.reps} reps @ ${previousData.weight}lbs (from ${lastDate})`
+        );
+      } else {
+        exercisesWithoutHistory.push(exerciseType);
+        exerciseDetails.push(
+          `${exerciseType.name}: 3 sets × 10 reps @ 0lbs (default)`
+        );
+      }
+    }
+
+    let alertMessage = `Added ${selectedExercises.length} ${category} exercise${selectedExercises.length > 1 ? 's' : ''} to your workout:`;
+    alertMessage += `\n\n${exerciseDetails.join("\n")}`;
+
+    if (exercisesWithHistory.length > 0) {
+      alertMessage += `\n\n✅ ${exercisesWithHistory.length} exercise${
+        exercisesWithHistory.length > 1 ? "s" : ""
+      } auto-filled from previous workouts`;
+    }
+
+    if (exercisesWithoutHistory.length > 0) {
+      alertMessage += `\n\n🆕 ${exercisesWithoutHistory.length} new exercise${
+        exercisesWithoutHistory.length > 1 ? "s" : ""
+      } with default values`;
+    }
+
+    alertMessage +=
+      "\n\nTap any exercise to customize sets, reps, and weights.";
+
+    Alert.alert("Exercises Added!", alertMessage);
+  };
+
   const editExercise = (exercise: Exercise) => {
     setEditingExercise(exercise);
     setSets(exercise.sets.toString());
@@ -669,6 +763,12 @@ export default function WorkoutTracker() {
       },
       addExerciseButton: {
         backgroundColor: theme.secondary,
+        padding: 12,
+        borderRadius: 8,
+        flex: 1,
+      },
+      addSupersetButton: {
+        backgroundColor: theme.accent,
         padding: 12,
         borderRadius: 8,
         flex: 1,
@@ -1135,6 +1235,13 @@ export default function WorkoutTracker() {
               </Pressable>
 
               <Pressable
+                style={styles.addSupersetButton}
+                onPress={() => setShowGenerateWorkout(true)}
+              >
+                <Text style={styles.buttonText}>Add Superset</Text>
+              </Pressable>
+
+              <Pressable
                 style={styles.cancelWorkoutButton}
                 onPress={cancelWorkout}
               >
@@ -1388,7 +1495,9 @@ export default function WorkoutTracker() {
       <Modal visible={showGenerateWorkout} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Generate Workout</Text>
+            <Text style={styles.modalTitle}>
+              {isWorkoutActive ? "Add Superset" : "Generate Workout"}
+            </Text>
 
             <ScrollView
               style={styles.generateScrollView}
@@ -1410,7 +1519,9 @@ export default function WorkoutTracker() {
                             count < exerciseCount && styles.disabledButton,
                           ]}
                           onPress={() =>
-                            generateWorkout(category, exerciseCount)
+                            isWorkoutActive 
+                              ? addGeneratedExercises(category, exerciseCount)
+                              : generateWorkout(category, exerciseCount)
                           }
                           disabled={count < exerciseCount}
                         >
