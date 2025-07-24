@@ -36,6 +36,9 @@ const DEFAULT_CATEGORIES = [
   "Cardio",
 ];
 
+// Protected categories that cannot be edited or deleted
+const PROTECTED_CATEGORIES = ["Cardio"];
+
 export default function WorkoutTypesManager() {
   const { theme } = useTheme();
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
@@ -44,7 +47,9 @@ export default function WorkoutTypesManager() {
   const [showEditExercise, setShowEditExercise] = useState(false);
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("");
-  const [editingExercise, setEditingExercise] = useState<ExerciseType | null>(null);
+  const [editingExercise, setEditingExercise] = useState<ExerciseType | null>(
+    null
+  );
 
   // Form states
   const [exerciseName, setExerciseName] = useState("");
@@ -150,6 +155,61 @@ export default function WorkoutTypesManager() {
       category: "Core",
       description: "Core stability exercise",
     },
+    {
+      id: "17",
+      name: "Tricep Extension",
+      category: "Arms",
+      description: "Pull downward on attached weight until arms are extended.",
+    },
+    // Default Cardio exercises
+    {
+      id: "9",
+      name: "Treadmill Running",
+      category: "Cardio",
+      description: "Running on treadmill with pace and incline options",
+    },
+    {
+      id: "10",
+      name: "Treadmill Walking",
+      category: "Cardio",
+      description: "Walking on treadmill with pace and incline options",
+    },
+    {
+      id: "11",
+      name: "Stationary Bike",
+      category: "Cardio",
+      description: "Cycling with resistance and pace tracking",
+    },
+    {
+      id: "12",
+      name: "Elliptical",
+      category: "Cardio",
+      description: "Low-impact cardio with resistance options",
+    },
+    {
+      id: "13",
+      name: "Rowing Machine",
+      category: "Cardio",
+      description: "Full-body cardio with pace tracking",
+    },
+    {
+      id: "14",
+      name: "Stair Climber",
+      category: "Cardio",
+      description: "Stair climbing with pace and resistance",
+    },
+    {
+      id: "15",
+      name: "Outdoor Running",
+      category: "Cardio",
+      description: "Running outdoors with pace and elevation tracking",
+    },
+    {
+      id: "16",
+      name: "Outdoor Walking",
+      category: "Cardio",
+      description: "Walking outdoors with pace and elevation tracking",
+    },
   ];
 
   const saveExerciseTypes = async (newExercises: ExerciseType[]) => {
@@ -184,6 +244,16 @@ export default function WorkoutTypesManager() {
   };
 
   const startEditExercise = (exercise: ExerciseType) => {
+    // Check if this is a protected cardio exercise
+    if (PROTECTED_CATEGORIES.includes(exercise.category)) {
+      Alert.alert(
+        "Protected Exercise",
+        `${exercise.category} exercises cannot be edited as they have special functionality for pace, elevation, and interval tracking.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     setEditingExercise(exercise);
     setExerciseName(exercise.name);
     setExerciseCategory(exercise.category);
@@ -211,7 +281,7 @@ export default function WorkoutTypesManager() {
     );
 
     saveExerciseTypes(updatedExercises);
-    
+
     setExerciseName("");
     setExerciseDescription("");
     setEditingExercise(null);
@@ -220,6 +290,18 @@ export default function WorkoutTypesManager() {
   };
 
   const deleteExerciseType = (id: string) => {
+    const exercise = exerciseTypes.find((ex) => ex.id === id);
+
+    // Check if this is a protected cardio exercise
+    if (exercise && PROTECTED_CATEGORIES.includes(exercise.category)) {
+      Alert.alert(
+        "Protected Exercise",
+        `${exercise.category} exercises cannot be deleted as they have special functionality for pace, elevation, and interval tracking.`,
+        [{ text: "OK" }]
+      );
+      return;
+    }
+
     Alert.alert(
       "Delete Exercise",
       "Are you sure you want to delete this exercise?",
@@ -357,9 +439,16 @@ export default function WorkoutTypesManager() {
         const categoryExercises = getExercisesByCategory(category);
         return (
           <View key={category} style={styles.categorySection}>
-            <Text style={styles.categoryTitle}>
-              {category} ({categoryExercises.length})
-            </Text>
+            <View style={styles.categoryTitleContainer}>
+              <Text style={styles.categoryTitle}>
+                {category} ({categoryExercises.length})
+              </Text>
+              {PROTECTED_CATEGORIES.includes(category) && (
+                <View style={styles.protectedBadge}>
+                  <Text style={styles.protectedBadgeText}>🔒 PROTECTED</Text>
+                </View>
+              )}
+            </View>
             {categoryExercises.map((exercise) => (
               <View key={exercise.id} style={styles.exerciseCard}>
                 <View style={styles.exerciseInfo}>
@@ -370,20 +459,22 @@ export default function WorkoutTypesManager() {
                     </Text>
                   )}
                 </View>
-                <View style={styles.exerciseActions}>
-                  <Pressable
-                    style={styles.editButton}
-                    onPress={() => startEditExercise(exercise)}
-                  >
-                    <Text style={styles.editButtonText}>✏️</Text>
-                  </Pressable>
-                  <Pressable
-                    style={styles.deleteButton}
-                    onPress={() => deleteExerciseType(exercise.id)}
-                  >
-                    <Text style={styles.deleteButtonText}>×</Text>
-                  </Pressable>
-                </View>
+                {!PROTECTED_CATEGORIES.includes(exercise.category) && (
+                  <View style={styles.exerciseActions}>
+                    <Pressable
+                      style={styles.editButton}
+                      onPress={() => startEditExercise(exercise)}
+                    >
+                      <Text style={styles.editButtonText}>✏️</Text>
+                    </Pressable>
+                    <Pressable
+                      style={styles.deleteButton}
+                      onPress={() => deleteExerciseType(exercise.id)}
+                    >
+                      <Text style={styles.deleteButtonText}>×</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
             ))}
             {categoryExercises.length === 0 && (
@@ -828,5 +919,22 @@ const createStyles = (theme: any) =>
     generateScrollView: {
       maxHeight: 400,
       marginBottom: 10,
+    },
+    categoryTitleContainer: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 15,
+    },
+    protectedBadge: {
+      backgroundColor: theme.warning || "#FFA500",
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    protectedBadgeText: {
+      fontSize: 10,
+      fontWeight: "bold",
+      color: theme.buttonText,
     },
   });

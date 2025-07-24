@@ -7,13 +7,6 @@
  * - Mifflin-St Jeor Equation
  */
 
-import { 
-  CalorieTrackingError, 
-  ErrorLogger, 
-  createCalculationError,
-  createValidationError,
-  withGracefulDegradation 
-} from './errorHandling';
 
 export interface UserProfile {
   age: number;
@@ -45,10 +38,20 @@ const MET_VALUES = {
   'strength_moderate': 5.0,   // Moderate effort (moderate weights)
   'strength_vigorous': 6.0,   // Vigorous effort (heavy weights)
   
-  // Cardio
+  // Cardio - Base values (will be adjusted based on pace, incline, etc.)
   'cardio_light': 4.0,        // Light cardio (walking, light cycling)
   'cardio_moderate': 6.5,     // Moderate cardio (jogging, moderate cycling)
   'cardio_vigorous': 8.5,     // Vigorous cardio (running, intense cycling)
+  
+  // Cardio-specific activities with pace-based MET values
+  'walking': 3.5,             // Base walking MET
+  'running': 8.0,             // Base running MET
+  'cycling': 6.0,             // Base cycling MET
+  'treadmill': 6.0,           // Base treadmill MET
+  'elliptical': 5.0,          // Base elliptical MET
+  'rowing': 7.0,              // Base rowing MET
+  'swimming': 6.0,            // Base swimming MET
+  'stairmaster': 9.0,         // Base stair climbing MET
   
   // Default values for common exercise categories
   'arms': 4.5,
@@ -134,15 +137,128 @@ function applyIntensityMultiplier(baseMET: number, intensity: 'light' | 'moderat
 }
 
 /**
+ * Calculate pace-based MET value for cardio exercises
+ * Based on research from ACSM and Compendium of Physical Activities
+ */
+function calculatePaceBasedMET(exerciseName: string, pace?: number, paceUnit?: 'mph' | 'kmh'): number {
+  if (!pace) return MET_VALUES.cardio; // Default cardio MET if no pace provided
+  
+  const exerciseNameLower = exerciseName.toLowerCase();
+  
+  // Convert pace to mph for consistent calculations
+  const paceInMph = paceUnit === 'kmh' ? pace * 0.621371 : pace;
+  
+  // Walking MET calculations (based on ACSM guidelines)
+  if (exerciseNameLower.includes('walk') || exerciseNameLower.includes('treadmill')) {
+    if (paceInMph < 2.0) return 2.0;
+    if (paceInMph < 2.5) return 2.8;
+    if (paceInMph < 3.0) return 3.5;
+    if (paceInMph < 3.5) return 4.3;
+    if (paceInMph < 4.0) return 5.0;
+    if (paceInMph < 4.5) return 7.0;
+    return 8.5; // Fast walking/jogging
+  }
+  
+  // Running MET calculations
+  if (exerciseNameLower.includes('run') || exerciseNameLower.includes('jog')) {
+    if (paceInMph < 4.0) return 6.0;
+    if (paceInMph < 5.0) return 8.3;
+    if (paceInMph < 6.0) return 9.8;
+    if (paceInMph < 7.0) return 11.0;
+    if (paceInMph < 8.0) return 11.8;
+    if (paceInMph < 9.0) return 12.8;
+    if (paceInMph < 10.0) return 14.5;
+    return 16.0; // Very fast running
+  }
+  
+  // Cycling MET calculations
+  if (exerciseNameLower.includes('cycl') || exerciseNameLower.includes('bike')) {
+    if (paceInMph < 10.0) return 4.0;
+    if (paceInMph < 12.0) return 6.8;
+    if (paceInMph < 14.0) return 8.0;
+    if (paceInMph < 16.0) return 10.0;
+    if (paceInMph < 20.0) return 12.0;
+    return 15.8; // Very fast cycling
+  }
+  
+  // Default cardio MET with pace adjustment
+  const baseMET = MET_VALUES[exerciseNameLower as keyof typeof MET_VALUES] || MET_VALUES.cardio;
+  
+  // Apply pace-based multiplier for other cardio exercises
+  if (paceInMph < 3.0) return baseMET * 0.7;
+  if (paceInMph < 6.0) return baseMET * 1.0;
+  if (paceInMph < 9.0) return baseMET * 1.3;
+  return baseMET * 1.6;
+}
+
+/**
+ * Apply elevation/incline adjustments to MET value
+ * Based on ACSM guidelines for incline adjustments
+ */
+function applyElevationAdjustment(baseMET: number, elevationAngle?: number): number {
+  if (!elevationAngle || elevationAngle === 0) return baseMET;
+  
+  // Convert angle to grade percentage: grade = tan(angle in radians) * 100
+  const angleInRadians = (elevationAngle * Math.PI) / 180;
+  const gradePercent = Math.tan(angleInRadians) * 100;
+  
+  // ACSM formula adjustment for incline: 
+  // Additional MET = 0.1 * grade% for walking/running
+  // Cap the adjustment to prevent extreme values
+  const maxAdjustment = baseMET * 0.8; // Max 80% increase
+  const adjustment = Math.min(Math.abs(gradePercent) * 0.01 * baseMET, maxAdjustment);
+  
+  if (elevationAngle > 0) {
+    // Uphill increases MET
+    return baseMET + adjustment;
+  } else {
+    // Downhill decreases MET (but not below 50% of base)
+    return Math.max(baseMET - adjustment * 0.5, baseMET * 0.5);
+  }
+}
+
+/**
+ * Apply interval training adjustments
+ * High-intensity intervals increase overall calorie burn
+ */
+function applyIntervalAdjustment(baseMET: number, intervalTime?: number): number {
+  if (!intervalTime) return baseMET;
+  
+  // Shorter intervals typically mean higher intensity
+  // Apply multiplier based on interval duration
+  if (intervalTime <= 30) return baseMET * 1.4; // Very short, high-intensity intervals
+  if (intervalTime <= 60) return baseMET * 1.3; // Short intervals
+  if (intervalTime <= 120) return baseMET * 1.2; // Medium intervals
+  if (intervalTime <= 300) return baseMET * 1.1; // Longer intervals
+  
+  return baseMET; // Very long intervals don't get bonus
+}
+
+/**
  * Get MET value for specific exercise with intensity-based adjustments
+ * Enhanced for cardio exercises with pace, elevation, and interval support
  */
 function getMETValue(exercise: any, intensity: 'light' | 'moderate' | 'vigorous', category: string): number {
   const categoryLower = category.toLowerCase();
   let baseMET: number;
   
-  // For cardio exercises, use cardio MET values
+  // For cardio exercises, use enhanced cardio calculations
   if (categoryLower === 'cardio') {
-    baseMET = MET_VALUES[`cardio_${intensity}`] || MET_VALUES.cardio;
+    // Use pace-based calculation if pace is provided
+    if (exercise.pace) {
+      baseMET = calculatePaceBasedMET(exercise.name, exercise.pace, exercise.paceUnit);
+    } else {
+      // Fall back to intensity-based cardio MET
+      baseMET = MET_VALUES[`cardio_${intensity}`] || MET_VALUES.cardio;
+    }
+    
+    // Apply elevation adjustment
+    baseMET = applyElevationAdjustment(baseMET, exercise.elevationAngle);
+    
+    // Apply interval training adjustment
+    baseMET = applyIntervalAdjustment(baseMET, exercise.intervalTime);
+    
+    return baseMET;
   }
   // For strength training, use strength MET values
   else if (MET_VALUES[`strength_${intensity}` as keyof typeof MET_VALUES]) {
@@ -714,22 +830,23 @@ export function validateWeight(weight: number, unit: 'kg' | 'lbs' = 'kg'): Valid
 
 /**
  * Validate height (100-250cm)
+ * Note: Height is always stored in cm in UserProfile, regardless of display unit
  */
 export function validateHeight(height: number, unit: 'cm' | 'ft_in' = 'cm', inches?: number): ValidationResult {
   const errors: string[] = [];
   
-  if (unit === 'ft_in') {
-    // Validate feet and inches separately
+  if (unit === 'ft_in' && inches !== undefined) {
+    // This is for form validation where feet and inches are provided separately
     if (!Number.isInteger(height) || height < 0) {
       errors.push('Feet must be a non-negative whole number');
     }
     
-    if (inches !== undefined && (!Number.isInteger(inches) || inches < 0 || inches >= 12)) {
+    if (!Number.isInteger(inches) || inches < 0 || inches >= 12) {
       errors.push('Inches must be a whole number between 0 and 11');
     }
     
     // Convert to cm for range validation
-    const totalInches = height * 12 + (inches || 0);
+    const totalInches = height * 12 + inches;
     const heightInCm = totalInches * 2.54;
     
     if (heightInCm < 100) {
@@ -740,7 +857,7 @@ export function validateHeight(height: number, unit: 'cm' | 'ft_in' = 'cm', inch
       errors.push('Height must be 8 feet 2 inches or less');
     }
   } else {
-    // Validate centimeters
+    // For profile validation, height is always in cm regardless of heightUnit
     if (!Number.isFinite(height) || height <= 0) {
       errors.push('Height must be a positive number');
     }
@@ -809,7 +926,8 @@ export function validateUserProfile(profile: Partial<UserProfile>): ValidationRe
   
   // Validate height
   if (profile.height !== undefined) {
-    const heightValidation = validateHeight(profile.height, profile.heightUnit);
+    // Height is always stored in cm in UserProfile, so validate as cm regardless of heightUnit
+    const heightValidation = validateHeight(profile.height, 'cm');
     errors.push(...heightValidation.errors);
   } else {
     errors.push('Height is required');

@@ -10,6 +10,11 @@ export interface Exercise {
   sets: number;
   reps: number;
   weight: number;
+  // Cardio-specific fields (optional)
+  pace?: number; // Speed in mph or kmh
+  paceUnit?: 'mph' | 'kmh';
+  elevationAngle?: number; // Incline angle in degrees (positive for uphill, negative for downhill)
+  intervalTime?: number; // Interval duration in seconds
 }
 
 export interface CalorieData {

@@ -1,5 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
@@ -12,23 +12,41 @@ import {
   View,
 } from "react-native";
 import { CalorieCalculationErrorBoundary } from "../../components/CalorieCalculationErrorBoundary";
-import { CalorieCalculationResult, WorkoutSummaryModal } from "../../components/WorkoutSummaryModal";
+import { CardioExerciseInput } from "../../components/CardioExerciseInput";
+import {
+  CalorieCalculationResult,
+  WorkoutSummaryModal,
+} from "../../components/WorkoutSummaryModal";
 import { useTheme } from "../../contexts/ThemeContext";
 import { useUserProfile } from "../../contexts/UserProfileContext";
 import { CalorieData, Exercise, WorkoutRecord } from "../../types/workout";
-import { calculateWorkoutCalories, WorkoutData } from "../../utils/calorieCalculator";
-import { createErrorFromException, ErrorLogger, withGracefulDegradation } from "../../utils/errorHandling";
+import {
+  calculateWorkoutCalories,
+  WorkoutData,
+} from "../../utils/calorieCalculator";
+import {
+  createErrorFromException,
+  ErrorLogger,
+  withGracefulDegradation,
+} from "../../utils/errorHandling";
 
 export default function WorkoutTracker() {
   const { theme } = useTheme();
-  const { userProfile, isProfileComplete, profileCompleteness, getDefaultProfile } = useUserProfile();
+  const {
+    userProfile,
+    isProfileComplete,
+    profileCompleteness,
+    getDefaultProfile,
+  } = useUserProfile();
   const [workouts, setWorkouts] = useState<WorkoutRecord[]>([]);
   const [currentWorkout, setCurrentWorkout] = useState<Exercise[]>([]);
   const [isWorkoutActive, setIsWorkoutActive] = useState(false);
   const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
   const [showAddExercise, setShowAddExercise] = useState(false);
   const [showWorkoutHistory, setShowWorkoutHistory] = useState(false);
-  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutRecord | null>(null);
+  const [selectedWorkout, setSelectedWorkout] = useState<WorkoutRecord | null>(
+    null
+  );
   const [showGenerateWorkout, setShowGenerateWorkout] = useState(false);
   const [exerciseTypes, setExerciseTypes] = useState<any[]>([]);
   const [categories, setCategories] = useState<string[]>([
@@ -46,28 +64,16 @@ export default function WorkoutTracker() {
 
   // Workout summary modal states
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
-  const [workoutSummaryData, setWorkoutSummaryData] = useState<WorkoutData | null>(null);
-  const [calorieCalculationResult, setCalorieCalculationResult] = useState<CalorieCalculationResult | null>(null);
+  const [workoutSummaryData, setWorkoutSummaryData] =
+    useState<WorkoutData | null>(null);
+  const [calorieCalculationResult, setCalorieCalculationResult] =
+    useState<CalorieCalculationResult | null>(null);
 
   // Form states
   const [exerciseName, setExerciseName] = useState("");
   const [sets, setSets] = useState("");
   const [reps, setReps] = useState("");
   const [weight, setWeight] = useState("");
-
-  useEffect(() => {
-    loadWorkouts();
-    loadExerciseTypes();
-    loadWorkoutRetention();
-    loadCategories();
-  }, []);
-
-  // Reload categories when tab becomes active (to sync with Settings changes)
-  useFocusEffect(
-    React.useCallback(() => {
-      loadCategories();
-    }, [])
-  );
 
   const loadWorkouts = async () => {
     try {
@@ -79,6 +85,54 @@ export default function WorkoutTracker() {
       console.error("Error loading workouts:", error);
     }
   };
+
+  const loadExerciseTypes = async () => {
+    try {
+      const stored = await AsyncStorage.getItem("exerciseTypes");
+      if (stored) {
+        setExerciseTypes(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error("Error loading exercise types:", error);
+    }
+  };
+
+  const loadWorkoutRetention = async () => {
+    try {
+      const stored = await AsyncStorage.getItem("workoutRetentionWeeks");
+      if (stored) {
+        setWorkoutRetentionWeeks(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error("Error loading workout retention:", error);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const stored = await AsyncStorage.getItem("exerciseCategories");
+      if (stored) {
+        setCategories(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error("Error loading categories:", error);
+    }
+  };
+
+  useEffect(() => {
+    loadWorkouts();
+    loadExerciseTypes();
+    loadWorkoutRetention();
+    loadCategories();
+  }, []);
+
+  // Reload categories and exercise types when tab becomes active (to sync with changes from other tabs)
+  useFocusEffect(
+    React.useCallback(() => {
+      loadCategories();
+      loadExerciseTypes();
+    }, [loadCategories, loadExerciseTypes])
+  );
 
   const saveWorkouts = async (newWorkouts: WorkoutRecord[]) => {
     try {
@@ -129,61 +183,74 @@ export default function WorkoutTracker() {
 
     // Calculate calories burned
     const workoutData: WorkoutData = {
-      exercises: currentWorkout.map(ex => ({
+      exercises: currentWorkout.map((ex) => ({
         name: ex.name,
         sets: ex.sets,
         reps: ex.reps,
-        weight: ex.weight
+        weight: ex.weight,
       })),
-      duration
+      duration,
     };
 
     // Create exercise categories mapping
     const exerciseCategories: { [exerciseName: string]: string } = {};
-    currentWorkout.forEach(exercise => {
-      const exerciseType = exerciseTypes.find(et => et.name === exercise.name);
-      exerciseCategories[exercise.name] = exerciseType?.category || 'default';
+    currentWorkout.forEach((exercise) => {
+      const exerciseType = exerciseTypes.find(
+        (et) => et.name === exercise.name
+      );
+      exerciseCategories[exercise.name] = exerciseType?.category || "default";
     });
 
     // Determine which profile to use for calculations
-    const profileToUse = userProfile && isProfileComplete ? userProfile : getDefaultProfile();
+    const profileToUse =
+      userProfile && isProfileComplete ? userProfile : getDefaultProfile();
     const isUsingDefaults = !userProfile || !isProfileComplete;
 
     // Convert weight from lbs to kg if needed (app uses lbs, calculator expects kg)
     const profileForCalculation = {
       ...profileToUse,
-      weight: profileToUse.weightUnit === 'lbs' ? profileToUse.weight * 0.453592 : profileToUse.weight
+      weight:
+        profileToUse.weightUnit === "lbs"
+          ? profileToUse.weight * 0.453592
+          : profileToUse.weight,
     };
 
     // Calculate calories with error handling
     const calorieResult = withGracefulDegradation(
-      () => calculateWorkoutCalories(workoutData, profileForCalculation, exerciseCategories),
+      () =>
+        calculateWorkoutCalories(
+          workoutData,
+          profileForCalculation,
+          exerciseCategories
+        ),
       {
         success: false,
         totalCalories: 0,
         exerciseBreakdown: [],
         averageMET: 0,
-        errors: ['Calorie calculation failed - using fallback'],
-        warnings: ['Workout saved without calorie data'],
-        fallbacksUsed: ['Default calorie calculation fallback applied']
+        errors: ["Calorie calculation failed - using fallback"],
+        warnings: ["Workout saved without calorie data"],
+        fallbacksUsed: ["Default calorie calculation fallback applied"],
       },
-      'workout calorie calculation'
+      "workout calorie calculation"
     );
 
     // Create calorie data for workout record
     const calorieData: CalorieData = {
       totalCalories: calorieResult.totalCalories,
-      calculationMethod: isUsingDefaults ? 'default_values' : 'complete_profile',
+      calculationMethod: isUsingDefaults
+        ? "default_values"
+        : "complete_profile",
       profileSnapshot: {
         age: profileForCalculation.age,
         sex: profileForCalculation.sex,
         weight: profileForCalculation.weight,
         height: profileForCalculation.height,
-        activityLevel: profileForCalculation.activityLevel
+        activityLevel: profileForCalculation.activityLevel,
       },
       exerciseBreakdown: calorieResult.exerciseBreakdown,
       averageMET: calorieResult.averageMET,
-      profileCompleteness: profileCompleteness
+      profileCompleteness: profileCompleteness,
     };
 
     // Create new workout record with calorie data
@@ -192,18 +259,22 @@ export default function WorkoutTracker() {
       date: new Date().toISOString(),
       exercises: currentWorkout,
       duration,
-      calorieData
+      calorieData,
     };
 
     // Create calorie calculation result with additional metadata for modal
     const calorieCalculationResult: CalorieCalculationResult = {
       ...calorieResult,
-      calculationMethod: isUsingDefaults ? 'default_values' : 'complete_profile',
+      calculationMethod: isUsingDefaults
+        ? "default_values"
+        : "complete_profile",
       profileCompleteness: profileCompleteness,
-      recommendations: isUsingDefaults ? [
-        'Complete your profile in Settings for more accurate calorie calculations',
-        'Add your age, weight, height, and activity level for personalized results'
-      ] : undefined
+      recommendations: isUsingDefaults
+        ? [
+            "Complete your profile in Settings for more accurate calorie calculations",
+            "Add your age, weight, height, and activity level for personalized results",
+          ]
+        : undefined,
     };
 
     // Save workout data
@@ -265,41 +336,13 @@ export default function WorkoutTracker() {
     return diffWeeks === 1 ? "1 week ago" : `${diffWeeks} weeks ago`;
   };
 
-  const loadExerciseTypes = async () => {
-    try {
-      const stored = await AsyncStorage.getItem("exerciseTypes");
-      if (stored) {
-        setExerciseTypes(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error("Error loading exercise types:", error);
-    }
-  };
-
-  const loadWorkoutRetention = async () => {
-    try {
-      const stored = await AsyncStorage.getItem("workoutRetentionWeeks");
-      if (stored) {
-        setWorkoutRetentionWeeks(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error("Error loading workout retention:", error);
-    }
-  };
-
-  const loadCategories = async () => {
-    try {
-      const stored = await AsyncStorage.getItem("exerciseCategories");
-      if (stored) {
-        setCategories(JSON.parse(stored));
-      }
-    } catch (error) {
-      console.error("Error loading categories:", error);
-    }
-  };
-
   const getExercisesByCategory = (category: string) => {
     return exerciseTypes.filter((ex: any) => ex.category === category);
+  };
+
+  const isCardioExercise = (exerciseName: string): boolean => {
+    const exerciseType = exerciseTypes.find((et) => et.name === exerciseName);
+    return exerciseType?.category === "Cardio";
   };
 
   const findLastExerciseData = (exerciseName: string) => {
@@ -543,123 +586,616 @@ export default function WorkoutTracker() {
     );
   };
 
+  const createStyles = (theme: any) =>
+    StyleSheet.create({
+      container: {
+        flex: 1,
+        padding: 20,
+        backgroundColor: theme.background,
+      },
+      title: {
+        fontSize: 28,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 30,
+        color: theme.text,
+      },
+      startButton: {
+        backgroundColor: theme.success,
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 30,
+      },
+      buttonText: {
+        color: theme.buttonText,
+        textAlign: "center",
+        fontSize: 16,
+        fontWeight: "bold",
+      },
+      sectionTitle: {
+        fontSize: 20,
+        fontWeight: "bold",
+        marginBottom: 15,
+        color: theme.text,
+      },
+      workoutCard: {
+        backgroundColor: theme.surface,
+        borderRadius: 10,
+        marginBottom: 10,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+        flexDirection: "row",
+        alignItems: "center",
+      },
+      workoutCardContent: {
+        flex: 1,
+        padding: 15,
+      },
+      workoutDate: {
+        fontSize: 16,
+        fontWeight: "bold",
+        color: theme.text,
+      },
+      workoutDuration: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      exerciseCount: {
+        fontSize: 14,
+        color: theme.textSecondary,
+      },
+      calorieInfo: {
+        fontSize: 14,
+        color: theme.primary,
+        fontWeight: "600",
+        marginTop: 2,
+      },
+      activeWorkoutTitle: {
+        fontSize: 22,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 10,
+        color: theme.primary,
+      },
+      timer: {
+        textAlign: "center",
+        fontSize: 16,
+        color: theme.textSecondary,
+        marginBottom: 20,
+      },
+      addExerciseButton: {
+        backgroundColor: theme.secondary,
+        padding: 12,
+        borderRadius: 8,
+        flex: 1,
+      },
+      exerciseCard: {
+        backgroundColor: theme.surface,
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+        elevation: 3,
+      },
+      exerciseInfo: {
+        flex: 1,
+      },
+      exerciseName: {
+        fontSize: 16,
+        fontWeight: "bold",
+        color: theme.text,
+      },
+      exerciseDetails: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      finishButton: {
+        backgroundColor: theme.error,
+        padding: 15,
+        borderRadius: 10,
+        marginTop: 20,
+      },
+      modalOverlay: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+      },
+      modalContent: {
+        backgroundColor: theme.surface,
+        padding: 20,
+        borderRadius: 15,
+        width: "90%",
+        maxWidth: 400,
+      },
+      modalTitle: {
+        fontSize: 20,
+        fontWeight: "bold",
+        textAlign: "center",
+        marginBottom: 20,
+        color: theme.text,
+      },
+      input: {
+        borderWidth: 1,
+        borderColor: theme.textSecondary,
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 15,
+        fontSize: 16,
+        backgroundColor: theme.surface,
+        color: theme.text,
+      },
+      modalButtons: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+      },
+      modalButton: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+      },
+      cancelButton: {
+        backgroundColor: theme.textSecondary,
+      },
+      addButton: {
+        backgroundColor: theme.success,
+      },
+      historyButton: {
+        backgroundColor: theme.primary,
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 20,
+      },
+      workoutTime: {
+        fontSize: 12,
+        color: theme.textSecondary,
+        marginTop: 2,
+      },
+      noWorkoutsText: {
+        textAlign: "center",
+        fontSize: 16,
+        color: theme.textSecondary,
+        marginTop: 20,
+        fontStyle: "italic",
+      },
+      historyModalContent: {
+        backgroundColor: theme.surface,
+        padding: 20,
+        borderRadius: 15,
+        width: "95%",
+        maxWidth: 500,
+        maxHeight: "80%",
+      },
+      workoutDetailsScroll: {
+        maxHeight: 400,
+      },
+      workoutDetailsHeader: {
+        backgroundColor: theme.background,
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 20,
+      },
+      workoutDetailsDate: {
+        fontSize: 18,
+        fontWeight: "bold",
+        color: theme.text,
+      },
+      workoutDetailsTime: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      workoutDetailsDuration: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      calorieDetailsSection: {
+        backgroundColor: theme.surface,
+        padding: 12,
+        borderRadius: 8,
+        marginTop: 10,
+        borderLeftWidth: 3,
+        borderLeftColor: theme.primary,
+      },
+      calorieDetailsTitle: {
+        fontSize: 16,
+        fontWeight: "bold",
+        color: theme.primary,
+        marginBottom: 5,
+      },
+      calorieDetailsMethod: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginBottom: 2,
+      },
+      calorieDetailsAvgMET: {
+        fontSize: 14,
+        color: theme.textSecondary,
+      },
+      exercisesTitle: {
+        fontSize: 18,
+        fontWeight: "bold",
+        marginBottom: 15,
+        color: theme.text,
+      },
+      exerciseDetailCard: {
+        backgroundColor: theme.background,
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 10,
+      },
+      exerciseDetailName: {
+        fontSize: 16,
+        fontWeight: "bold",
+        color: theme.text,
+      },
+      exerciseDetailInfo: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      backToHistoryButton: {
+        backgroundColor: theme.secondary,
+        padding: 12,
+        borderRadius: 8,
+        alignItems: "center",
+        justifyContent: "center",
+        flex: 1,
+      },
+      historyScroll: {
+        maxHeight: 400,
+      },
+      historyWorkoutCard: {
+        backgroundColor: theme.background,
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 10,
+        borderLeftWidth: 4,
+        borderLeftColor: theme.primary,
+      },
+      historyWorkoutDate: {
+        fontSize: 16,
+        fontWeight: "bold",
+        color: theme.text,
+      },
+      historyWorkoutTime: {
+        fontSize: 12,
+        color: theme.textSecondary,
+        marginTop: 2,
+      },
+      historyWorkoutDuration: {
+        fontSize: 14,
+        color: theme.textSecondary,
+        marginTop: 5,
+      },
+      historyCalorieInfo: {
+        fontSize: 14,
+        color: theme.primary,
+        fontWeight: "600",
+        marginTop: 2,
+      },
+      noHistoryText: {
+        textAlign: "center",
+        fontSize: 16,
+        color: theme.textSecondary,
+        marginTop: 40,
+        fontStyle: "italic",
+      },
+      closeHistoryButton: {
+        backgroundColor: theme.textSecondary,
+        padding: 15,
+        borderRadius: 10,
+        flex: 1,
+      },
+      generateButton: {
+        backgroundColor: theme.accent,
+        padding: 15,
+        borderRadius: 10,
+        marginBottom: 20,
+      },
+      activeWorkoutButtons: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+        marginBottom: 20,
+      },
+      cancelWorkoutButton: {
+        backgroundColor: theme.error,
+        padding: 12,
+        borderRadius: 8,
+        flex: 1,
+      },
+      generateOption: {
+        marginBottom: 20,
+        padding: 15,
+        backgroundColor: theme.background,
+        borderRadius: 10,
+      },
+      generateCategoryTitle: {
+        fontSize: 16,
+        fontWeight: "bold",
+        marginBottom: 10,
+        color: theme.text,
+      },
+      generateButtons: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+      },
+      generateCountButton: {
+        flex: 1,
+        backgroundColor: theme.secondary,
+        padding: 10,
+        borderRadius: 8,
+      },
+      disabledButton: {
+        backgroundColor: theme.textSecondary,
+        opacity: 0.5,
+      },
+      generateCountText: {
+        color: theme.buttonText,
+        textAlign: "center",
+        fontSize: 12,
+        fontWeight: "bold",
+      },
+      disabledText: {
+        color: theme.textSecondary,
+      },
+      closeButton: {
+        backgroundColor: theme.textSecondary,
+        padding: 15,
+        borderRadius: 10,
+        marginTop: 20,
+      },
+      deleteExerciseButton: {
+        backgroundColor: theme.error,
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        justifyContent: "center",
+        alignItems: "center",
+        marginLeft: 10,
+      },
+      deleteExerciseText: {
+        color: theme.buttonText,
+        fontSize: 18,
+        fontWeight: "bold",
+      },
+      deleteWorkoutButton: {
+        backgroundColor: theme.error,
+        width: 35,
+        height: 35,
+        borderRadius: 8,
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: 10,
+        padding: 5,
+      },
+      deleteWorkoutText: {
+        fontSize: 16,
+      },
+      workoutDetailsButtons: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+        marginTop: 20,
+      },
+      deleteWorkoutDetailButton: {
+        backgroundColor: theme.error,
+        padding: 12,
+        borderRadius: 8,
+        flex: 1,
+      },
+      historyModalButtons: {
+        flexDirection: "row",
+        justifyContent: "space-between",
+        gap: 10,
+        marginTop: 20,
+      },
+      clearAllButton: {
+        backgroundColor: theme.error,
+        padding: 15,
+        borderRadius: 10,
+        flex: 1,
+      },
+      generateScrollView: {
+        maxHeight: 400,
+        marginBottom: 10,
+      },
+      singleButton: {
+        flex: 1,
+      },
+      // New active workout layout styles
+      activeWorkoutContainer: {
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+      },
+      activeWorkoutHeader: {
+        flexShrink: 0,
+      },
+      exercisesScrollView: {
+        flex: 1,
+        marginVertical: 10,
+      },
+      exercisesScrollContent: {
+        paddingBottom: 20,
+      },
+      finishButtonContainer: {
+        flexShrink: 0,
+        paddingTop: 10,
+        paddingBottom: 10,
+        backgroundColor: theme.background,
+        borderTopWidth: 1,
+        borderTopColor: theme.textSecondary + "20",
+      },
+      inactiveWorkoutScrollView: {
+        flex: 1,
+      },
+    });
+
   const styles = createStyles(theme);
 
   return (
-    <ScrollView style={styles.container}>
+    <View style={styles.container}>
       <Text style={styles.title}>Fitness Tracker</Text>
 
       {!isWorkoutActive ? (
-        <View>
-          <Pressable style={styles.startButton} onPress={startWorkout}>
-            <Text style={styles.buttonText}>Start New Workout</Text>
-          </Pressable>
+        <ScrollView style={styles.inactiveWorkoutScrollView}>
+          <View>
+            <Pressable style={styles.startButton} onPress={startWorkout}>
+              <Text style={styles.buttonText}>Start New Workout</Text>
+            </Pressable>
 
-          <Pressable
-            style={styles.historyButton}
-            onPress={() => setShowWorkoutHistory(true)}
-          >
-            <Text style={styles.buttonText}>View Workout History</Text>
-          </Pressable>
+            <Pressable
+              style={styles.historyButton}
+              onPress={() => setShowWorkoutHistory(true)}
+            >
+              <Text style={styles.buttonText}>View Workout History</Text>
+            </Pressable>
 
-          <Pressable
-            style={styles.generateButton}
-            onPress={() => setShowGenerateWorkout(true)}
-          >
-            <Text style={styles.buttonText}>Generate Workout</Text>
-          </Pressable>
+            <Pressable
+              style={styles.generateButton}
+              onPress={() => setShowGenerateWorkout(true)}
+            >
+              <Text style={styles.buttonText}>Generate Workout</Text>
+            </Pressable>
 
-          <Text style={styles.sectionTitle}>Recent Workouts</Text>
-          {getFilteredWorkouts()
-            .slice(0, 3)
-            .map((workout) => (
-              <View key={workout.id} style={styles.workoutCard}>
-                <Pressable
-                  style={styles.workoutCardContent}
-                  onPress={() => {
-                    setSelectedWorkout(workout);
-                    setShowWorkoutHistory(true);
-                  }}
-                >
-                  <Text style={styles.workoutDate}>
-                    {formatDate(workout.date)}
-                  </Text>
-                  <Text style={styles.workoutTime}>
-                    {getWeeksAgo(workout.date)}
-                  </Text>
-                  <Text style={styles.workoutDuration}>
-                    {workout.duration} minutes
-                  </Text>
-                  <Text style={styles.exerciseCount}>
-                    {workout.exercises.length} exercises
-                  </Text>
-                  {workout.calorieData && (
-                    <Text style={styles.calorieInfo}>
-                      {workout.calorieData.totalCalories} calories burned
+            <Text style={styles.sectionTitle}>Recent Workouts</Text>
+            {getFilteredWorkouts()
+              .slice(0, 3)
+              .map((workout) => (
+                <View key={workout.id} style={styles.workoutCard}>
+                  <Pressable
+                    style={styles.workoutCardContent}
+                    onPress={() => {
+                      setSelectedWorkout(workout);
+                      setShowWorkoutHistory(true);
+                    }}
+                  >
+                    <Text style={styles.workoutDate}>
+                      {formatDate(workout.date)}
                     </Text>
-                  )}
-                </Pressable>
-                <Pressable
-                  style={styles.deleteWorkoutButton}
-                  onPress={() => deleteIndividualWorkout(workout.id)}
-                >
-                  <Text style={styles.deleteWorkoutText}>🗑️</Text>
-                </Pressable>
-              </View>
-            ))}
+                    <Text style={styles.workoutTime}>
+                      {getWeeksAgo(workout.date)}
+                    </Text>
+                    <Text style={styles.workoutDuration}>
+                      {workout.duration} minutes
+                    </Text>
+                    <Text style={styles.exerciseCount}>
+                      {workout.exercises.length} exercises
+                    </Text>
+                    {workout.calorieData && (
+                      <Text style={styles.calorieInfo}>
+                        {workout.calorieData.totalCalories} calories burned
+                      </Text>
+                    )}
+                  </Pressable>
+                  <Pressable
+                    style={styles.deleteWorkoutButton}
+                    onPress={() => deleteIndividualWorkout(workout.id)}
+                  >
+                    <Text style={styles.deleteWorkoutText}>🗑️</Text>
+                  </Pressable>
+                </View>
+              ))}
 
-          {getFilteredWorkouts().length === 0 && (
-            <Text style={styles.noWorkoutsText}>No recent workouts</Text>
-          )}
-        </View>
+            {getFilteredWorkouts().length === 0 && (
+              <Text style={styles.noWorkoutsText}>No recent workouts</Text>
+            )}
+          </View>
+        </ScrollView>
       ) : (
-        <View>
-          <Text style={styles.activeWorkoutTitle}>Active Workout</Text>
-          <Text style={styles.timer}>
-            Started: {workoutStartTime?.toLocaleTimeString()}
-          </Text>
+        <View style={styles.activeWorkoutContainer}>
+          <View style={styles.activeWorkoutHeader}>
+            <Text style={styles.activeWorkoutTitle}>Active Workout</Text>
+            <Text style={styles.timer}>
+              Started: {workoutStartTime?.toLocaleTimeString()}
+            </Text>
 
-          <View style={styles.activeWorkoutButtons}>
-            <Pressable
-              style={styles.addExerciseButton}
-              onPress={() => setShowAddExercise(true)}
-            >
-              <Text style={styles.buttonText}>Add Exercise</Text>
-            </Pressable>
+            <View style={styles.activeWorkoutButtons}>
+              <Pressable
+                style={styles.addExerciseButton}
+                onPress={() => setShowAddExercise(true)}
+              >
+                <Text style={styles.buttonText}>Add Exercise</Text>
+              </Pressable>
 
-            <Pressable
-              style={styles.cancelWorkoutButton}
-              onPress={cancelWorkout}
-            >
-              <Text style={styles.buttonText}>Cancel Workout</Text>
-            </Pressable>
+              <Pressable
+                style={styles.cancelWorkoutButton}
+                onPress={cancelWorkout}
+              >
+                <Text style={styles.buttonText}>Cancel Workout</Text>
+              </Pressable>
+            </View>
           </View>
 
-          {currentWorkout.map((exercise) => (
-            <Pressable
-              key={exercise.id}
-              style={styles.exerciseCard}
-              onPress={() => openEditExercise(exercise)}
-            >
-              <View style={styles.exerciseInfo}>
-                <Text style={styles.exerciseName}>{exercise.name}</Text>
-                <Text style={styles.exerciseDetails}>
-                  {exercise.sets} sets × {exercise.reps} reps @{" "}
-                  {exercise.weight}lbs
-                </Text>
-              </View>
-              <Pressable
-                style={styles.deleteExerciseButton}
-                onPress={() => deleteExerciseFromWorkout(exercise.id)}
-              >
-                <Text style={styles.deleteExerciseText}>×</Text>
-              </Pressable>
-            </Pressable>
-          ))}
+          <ScrollView
+            style={styles.exercisesScrollView}
+            contentContainerStyle={styles.exercisesScrollContent}
+            showsVerticalScrollIndicator={true}
+          >
+            {currentWorkout.map((exercise) => {
+              // Use CardioExerciseInput for cardio exercises
+              if (isCardioExercise(exercise.name)) {
+                return (
+                  <CardioExerciseInput
+                    key={exercise.id}
+                    exercise={exercise}
+                    onExerciseChange={(updatedExercise) => {
+                      const updatedExercises = currentWorkout.map((ex) =>
+                        ex.id === exercise.id ? updatedExercise : ex
+                      );
+                      setCurrentWorkout(updatedExercises);
+                    }}
+                    onRemove={() => deleteExerciseFromWorkout(exercise.id)}
+                  />
+                );
+              }
 
-          <Pressable style={styles.finishButton} onPress={finishWorkout}>
-            <Text style={styles.buttonText}>Finish Workout</Text>
-          </Pressable>
+              // Use regular display for non-cardio exercises
+              return (
+                <Pressable
+                  key={exercise.id}
+                  style={styles.exerciseCard}
+                  onPress={() => openEditExercise(exercise)}
+                >
+                  <View style={styles.exerciseInfo}>
+                    <Text style={styles.exerciseName}>{exercise.name}</Text>
+                    <Text style={styles.exerciseDetails}>
+                      {exercise.sets} sets × {exercise.reps} reps @{" "}
+                      {exercise.weight}lbs
+                    </Text>
+                  </View>
+                  <Pressable
+                    style={styles.deleteExerciseButton}
+                    onPress={() => deleteExerciseFromWorkout(exercise.id)}
+                  >
+                    <Text style={styles.deleteExerciseText}>×</Text>
+                  </Pressable>
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+
+          <View style={styles.finishButtonContainer}>
+            <Pressable style={styles.finishButton} onPress={finishWorkout}>
+              <Text style={styles.buttonText}>Finish Workout</Text>
+            </Pressable>
+          </View>
         </View>
       )}
 
@@ -736,10 +1272,15 @@ export default function WorkoutTracker() {
                   {selectedWorkout.calorieData && (
                     <View style={styles.calorieDetailsSection}>
                       <Text style={styles.calorieDetailsTitle}>
-                        Calories Burned: {selectedWorkout.calorieData.totalCalories}
+                        Calories Burned:{" "}
+                        {selectedWorkout.calorieData.totalCalories}
                       </Text>
                       <Text style={styles.calorieDetailsMethod}>
-                        Calculation: {selectedWorkout.calorieData.calculationMethod === 'complete_profile' ? 'Personalized' : 'Default values'}
+                        Calculation:{" "}
+                        {selectedWorkout.calorieData.calculationMethod ===
+                        "complete_profile"
+                          ? "Personalized"
+                          : "Default values"}
                       </Text>
                       <Text style={styles.calorieDetailsAvgMET}>
                         Average MET: {selectedWorkout.calorieData.averageMET}
@@ -905,8 +1446,10 @@ export default function WorkoutTracker() {
           maxRetries={2}
           retryDelay={1000}
           onError={(error, errorInfo) => {
-            console.error('Error in WorkoutSummaryModal:', error, errorInfo);
-            ErrorLogger.log(createErrorFromException(error, 'WorkoutSummaryModal'));
+            console.error("Error in WorkoutSummaryModal:", error, errorInfo);
+            ErrorLogger.log(
+              createErrorFromException(error, "WorkoutSummaryModal")
+            );
           }}
         >
           <WorkoutSummaryModal
@@ -977,440 +1520,6 @@ export default function WorkoutTracker() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
-
-const createStyles = (theme: any) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      padding: 20,
-      backgroundColor: theme.background,
-    },
-    title: {
-      fontSize: 28,
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 30,
-      color: theme.text,
-    },
-    startButton: {
-      backgroundColor: theme.success,
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 30,
-    },
-    buttonText: {
-      color: theme.buttonText,
-      textAlign: "center",
-      fontSize: 16,
-      fontWeight: "bold",
-    },
-    sectionTitle: {
-      fontSize: 20,
-      fontWeight: "bold",
-      marginBottom: 15,
-      color: theme.text,
-    },
-    workoutCard: {
-      backgroundColor: theme.surface,
-      borderRadius: 10,
-      marginBottom: 10,
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-      flexDirection: "row",
-      alignItems: "center",
-    },
-    workoutCardContent: {
-      flex: 1,
-      padding: 15,
-    },
-    workoutDate: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.text,
-    },
-    workoutDuration: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    exerciseCount: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    calorieInfo: {
-      fontSize: 14,
-      color: theme.primary,
-      fontWeight: "600",
-      marginTop: 2,
-    },
-    activeWorkoutTitle: {
-      fontSize: 22,
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 10,
-      color: theme.primary,
-    },
-    timer: {
-      textAlign: "center",
-      fontSize: 16,
-      color: theme.textSecondary,
-      marginBottom: 20,
-    },
-    addExerciseButton: {
-      backgroundColor: theme.secondary,
-      padding: 12,
-      borderRadius: 8,
-      flex: 1,
-    },
-    exerciseCard: {
-      backgroundColor: theme.surface,
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 10,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      shadowColor: "#000",
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.1,
-      shadowRadius: 4,
-      elevation: 3,
-    },
-    exerciseInfo: {
-      flex: 1,
-    },
-    exerciseName: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.text,
-    },
-    exerciseDetails: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    finishButton: {
-      backgroundColor: theme.error,
-      padding: 15,
-      borderRadius: 10,
-      marginTop: 20,
-    },
-    modalOverlay: {
-      flex: 1,
-      backgroundColor: "rgba(0,0,0,0.5)",
-      justifyContent: "center",
-      alignItems: "center",
-    },
-    modalContent: {
-      backgroundColor: theme.surface,
-      padding: 20,
-      borderRadius: 15,
-      width: "90%",
-      maxWidth: 400,
-    },
-    modalTitle: {
-      fontSize: 20,
-      fontWeight: "bold",
-      textAlign: "center",
-      marginBottom: 20,
-      color: theme.text,
-    },
-    input: {
-      borderWidth: 1,
-      borderColor: theme.textSecondary,
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 15,
-      fontSize: 16,
-      backgroundColor: theme.surface,
-      color: theme.text,
-    },
-    modalButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: 10,
-    },
-    modalButton: {
-      flex: 1,
-      padding: 12,
-      borderRadius: 8,
-    },
-    cancelButton: {
-      backgroundColor: theme.textSecondary,
-    },
-    addButton: {
-      backgroundColor: theme.success,
-    },
-    historyButton: {
-      backgroundColor: theme.primary,
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 20,
-    },
-    workoutTime: {
-      fontSize: 12,
-      color: theme.textSecondary,
-      marginTop: 2,
-    },
-    noWorkoutsText: {
-      textAlign: "center",
-      fontSize: 16,
-      color: theme.textSecondary,
-      marginTop: 20,
-      fontStyle: "italic",
-    },
-    historyModalContent: {
-      backgroundColor: theme.surface,
-      padding: 20,
-      borderRadius: 15,
-      width: "95%",
-      maxWidth: 500,
-      maxHeight: "80%",
-    },
-    workoutDetailsScroll: {
-      maxHeight: 400,
-    },
-    workoutDetailsHeader: {
-      backgroundColor: theme.background,
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 20,
-    },
-    workoutDetailsDate: {
-      fontSize: 18,
-      fontWeight: "bold",
-      color: theme.text,
-    },
-    workoutDetailsTime: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    workoutDetailsDuration: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    calorieDetailsSection: {
-      backgroundColor: theme.surface,
-      padding: 12,
-      borderRadius: 8,
-      marginTop: 10,
-      borderLeftWidth: 3,
-      borderLeftColor: theme.primary,
-    },
-    calorieDetailsTitle: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.primary,
-      marginBottom: 5,
-    },
-    calorieDetailsMethod: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginBottom: 2,
-    },
-    calorieDetailsAvgMET: {
-      fontSize: 14,
-      color: theme.textSecondary,
-    },
-    exercisesTitle: {
-      fontSize: 18,
-      fontWeight: "bold",
-      marginBottom: 15,
-      color: theme.text,
-    },
-    exerciseDetailCard: {
-      backgroundColor: theme.background,
-      padding: 12,
-      borderRadius: 8,
-      marginBottom: 10,
-    },
-    exerciseDetailName: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.text,
-    },
-    exerciseDetailInfo: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    backToHistoryButton: {
-      backgroundColor: theme.secondary,
-      padding: 12,
-      borderRadius: 8,
-      marginTop: 20,
-      alignItems: "center",
-      justifyContent: "center",
-    },
-    historyScroll: {
-      maxHeight: 400,
-    },
-    historyWorkoutCard: {
-      backgroundColor: theme.background,
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 10,
-      borderLeftWidth: 4,
-      borderLeftColor: theme.primary,
-    },
-    historyWorkoutDate: {
-      fontSize: 16,
-      fontWeight: "bold",
-      color: theme.text,
-    },
-    historyWorkoutTime: {
-      fontSize: 12,
-      color: theme.textSecondary,
-      marginTop: 2,
-    },
-    historyWorkoutDuration: {
-      fontSize: 14,
-      color: theme.textSecondary,
-      marginTop: 5,
-    },
-    historyCalorieInfo: {
-      fontSize: 14,
-      color: theme.primary,
-      fontWeight: "600",
-      marginTop: 2,
-    },
-    noHistoryText: {
-      textAlign: "center",
-      fontSize: 16,
-      color: theme.textSecondary,
-      marginTop: 40,
-      fontStyle: "italic",
-    },
-    closeHistoryButton: {
-      backgroundColor: theme.textSecondary,
-      padding: 15,
-      borderRadius: 10,
-      flex: 1,
-    },
-    generateButton: {
-      backgroundColor: theme.accent,
-      padding: 15,
-      borderRadius: 10,
-      marginBottom: 20,
-    },
-    activeWorkoutButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: 10,
-      marginBottom: 20,
-    },
-    cancelWorkoutButton: {
-      backgroundColor: theme.error,
-      padding: 12,
-      borderRadius: 8,
-      flex: 1,
-    },
-    generateOption: {
-      marginBottom: 20,
-      padding: 15,
-      backgroundColor: theme.background,
-      borderRadius: 10,
-    },
-    generateCategoryTitle: {
-      fontSize: 16,
-      fontWeight: "bold",
-      marginBottom: 10,
-      color: theme.text,
-    },
-    generateButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: 10,
-    },
-    generateCountButton: {
-      flex: 1,
-      backgroundColor: theme.secondary,
-      padding: 10,
-      borderRadius: 8,
-    },
-    disabledButton: {
-      backgroundColor: theme.textSecondary,
-      opacity: 0.5,
-    },
-    generateCountText: {
-      color: theme.buttonText,
-      textAlign: "center",
-      fontSize: 12,
-      fontWeight: "bold",
-    },
-    disabledText: {
-      color: theme.textSecondary,
-    },
-    closeButton: {
-      backgroundColor: theme.textSecondary,
-      padding: 15,
-      borderRadius: 10,
-      marginTop: 20,
-    },
-    deleteExerciseButton: {
-      backgroundColor: theme.error,
-      width: 30,
-      height: 30,
-      borderRadius: 15,
-      justifyContent: "center",
-      alignItems: "center",
-      marginLeft: 10,
-    },
-    deleteExerciseText: {
-      color: theme.buttonText,
-      fontSize: 18,
-      fontWeight: "bold",
-    },
-    deleteWorkoutButton: {
-      backgroundColor: theme.error,
-      width: 35,
-      height: 35,
-      borderRadius: 8,
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 10,
-      padding: 5,
-    },
-    deleteWorkoutText: {
-      fontSize: 16,
-    },
-    workoutDetailsButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: 10,
-      marginTop: 20,
-    },
-    deleteWorkoutDetailButton: {
-      backgroundColor: theme.error,
-      padding: 12,
-      borderRadius: 8,
-      flex: 1,
-    },
-    historyModalButtons: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: 10,
-      marginTop: 20,
-    },
-    clearAllButton: {
-      backgroundColor: theme.error,
-      padding: 15,
-      borderRadius: 10,
-      flex: 1,
-    },
-    generateScrollView: {
-      maxHeight: 400,
-      marginBottom: 10,
-    },
-    singleButton: {
-      flex: 1,
-    },
-  });

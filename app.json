@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "Ashto",
-    "slug": "Ashto",
+    "name": "Workout Budyy",
+    "slug": "Workout Buddy",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
-    "scheme": "ashto",
+    "icon": "./assets/images/icon-fitness.png",
+    "scheme": "abew",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/adaptive-icon-fitness.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
