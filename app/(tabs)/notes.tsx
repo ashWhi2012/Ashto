@@ -62,6 +62,9 @@ export default function WorkoutTracker() {
   const [editingExercise, setEditingExercise] = useState<Exercise | null>(null);
   const [workoutRetentionWeeks, setWorkoutRetentionWeeks] = useState(4);
 
+  // Max workout tracking
+  const [isMaxWorkout, setIsMaxWorkout] = useState(false);
+
   // Workout summary modal states
   const [showWorkoutSummary, setShowWorkoutSummary] = useState(false);
   const [workoutSummaryData, setWorkoutSummaryData] =
@@ -260,6 +263,7 @@ export default function WorkoutTracker() {
       exercises: currentWorkout,
       duration,
       calorieData,
+      isMaxWorkout, // Include max workout flag
     };
 
     // Create calorie calculation result with additional metadata for modal
@@ -285,10 +289,16 @@ export default function WorkoutTracker() {
     setWorkoutSummaryData(workoutData);
     setCalorieCalculationResult(calorieCalculationResult);
 
+    // Save max records if this is a max workout
+    if (isMaxWorkout) {
+      await saveMaxRecords(newWorkout);
+    }
+
     // Reset workout state
     setIsWorkoutActive(false);
     setCurrentWorkout([]);
     setWorkoutStartTime(null);
+    setIsMaxWorkout(false); // Reset max workout flag
 
     // Show workout summary modal instead of simple alert
     setShowWorkoutSummary(true);
@@ -453,9 +463,9 @@ export default function WorkoutTracker() {
     }
 
     // Filter out exercises already in current workout to avoid duplicates
-    const currentExerciseNames = currentWorkout.map(ex => ex.name);
+    const currentExerciseNames = currentWorkout.map((ex) => ex.name);
     const availableExercises = categoryExercises.filter(
-      ex => !currentExerciseNames.includes(ex.name)
+      (ex) => !currentExerciseNames.includes(ex.name)
     );
 
     if (availableExercises.length < exerciseCount) {
@@ -467,7 +477,10 @@ export default function WorkoutTracker() {
 
     // Randomly select from available exercises
     const shuffled = [...availableExercises].sort(() => 0.5 - Math.random());
-    const selectedExercises = shuffled.slice(0, Math.min(exerciseCount, availableExercises.length));
+    const selectedExercises = shuffled.slice(
+      0,
+      Math.min(exerciseCount, availableExercises.length)
+    );
 
     if (selectedExercises.length === 0) {
       Alert.alert(
@@ -515,7 +528,9 @@ export default function WorkoutTracker() {
       }
     }
 
-    let alertMessage = `Added ${selectedExercises.length} ${category} exercise${selectedExercises.length > 1 ? 's' : ''} to your workout:`;
+    let alertMessage = `Added ${selectedExercises.length} ${category} exercise${
+      selectedExercises.length > 1 ? "s" : ""
+    } to your workout:`;
     alertMessage += `\n\n${exerciseDetails.join("\n")}`;
 
     if (exercisesWithHistory.length > 0) {
@@ -605,9 +620,12 @@ export default function WorkoutTracker() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             const updatedWorkouts = workouts.filter((w) => w.id !== workoutId);
             saveWorkouts(updatedWorkouts);
+
+            // Remove associated max records
+            await removeMaxRecords(workoutId);
 
             // If we're viewing the deleted workout, go back to history
             if (selectedWorkout && selectedWorkout.id === workoutId) {
@@ -630,9 +648,13 @@ export default function WorkoutTracker() {
         {
           text: "Delete",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             const updatedWorkouts = workouts.filter((w) => w.id !== workoutId);
             saveWorkouts(updatedWorkouts);
+
+            // Remove associated max records
+            await removeMaxRecords(workoutId);
+
             Alert.alert("Success", "Workout deleted successfully");
           },
         },
@@ -649,8 +671,16 @@ export default function WorkoutTracker() {
         {
           text: "Delete All",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             saveWorkouts([]);
+
+            // Clear all max records since all workouts are deleted
+            try {
+              await AsyncStorage.setItem("maxRecords", JSON.stringify([]));
+            } catch (error) {
+              console.error("Error clearing max records:", error);
+            }
+
             setSelectedWorkout(null);
             setShowWorkoutHistory(false);
             Alert.alert("Success", "All workouts have been deleted");
@@ -673,11 +703,63 @@ export default function WorkoutTracker() {
             setIsWorkoutActive(false);
             setCurrentWorkout([]);
             setWorkoutStartTime(null);
+            setIsMaxWorkout(false); // Reset max workout flag
             Alert.alert("Workout Cancelled", "Your workout has been cancelled");
           },
         },
       ]
     );
+  };
+
+  const saveMaxRecords = async (workout: WorkoutRecord) => {
+    try {
+      // Only save max records for non-cardio exercises
+      const maxRecords = workout.exercises
+        .filter((exercise) => !isCardioExercise(exercise.name))
+        .map((exercise) => ({
+          id: `${workout.id}-${exercise.id}`,
+          exerciseName: exercise.name,
+          weight: exercise.weight,
+          reps: exercise.reps,
+          sets: exercise.sets,
+          date: workout.date,
+          workoutId: workout.id,
+        }));
+
+      if (maxRecords.length > 0) {
+        const existingMaxRecords = await AsyncStorage.getItem("maxRecords");
+        const allMaxRecords = existingMaxRecords
+          ? JSON.parse(existingMaxRecords)
+          : [];
+
+        const updatedMaxRecords = [...allMaxRecords, ...maxRecords];
+        await AsyncStorage.setItem(
+          "maxRecords",
+          JSON.stringify(updatedMaxRecords)
+        );
+      }
+    } catch (error) {
+      console.error("Error saving max records:", error);
+    }
+  };
+
+  const removeMaxRecords = async (workoutId: string) => {
+    try {
+      const existingMaxRecords = await AsyncStorage.getItem("maxRecords");
+      if (existingMaxRecords) {
+        const allMaxRecords = JSON.parse(existingMaxRecords);
+        // Filter out max records associated with the deleted workout
+        const updatedMaxRecords = allMaxRecords.filter(
+          (record: any) => record.workoutId !== workoutId
+        );
+        await AsyncStorage.setItem(
+          "maxRecords",
+          JSON.stringify(updatedMaxRecords)
+        );
+      }
+    } catch (error) {
+      console.error("Error removing max records:", error);
+    }
   };
 
   const createStyles = (theme: any) =>
@@ -1145,6 +1227,38 @@ export default function WorkoutTracker() {
       inactiveWorkoutScrollView: {
         flex: 1,
       },
+      // Max workout toggle styles
+      maxWorkoutToggle: {
+        marginTop: 15,
+        marginBottom: 10,
+      },
+      maxToggleButton: {
+        backgroundColor: theme.background,
+        padding: 12,
+        borderRadius: 8,
+        borderWidth: 2,
+        borderColor: theme.textSecondary,
+        alignItems: "center",
+      },
+      maxToggleButtonActive: {
+        backgroundColor: theme.error,
+        borderColor: theme.error,
+      },
+      maxToggleText: {
+        fontSize: 14,
+        fontWeight: "bold",
+        color: theme.textSecondary,
+      },
+      maxToggleTextActive: {
+        color: theme.buttonText,
+      },
+      maxWorkoutDescription: {
+        fontSize: 12,
+        color: theme.textSecondary,
+        textAlign: "center",
+        marginTop: 5,
+        fontStyle: "italic",
+      },
     });
 
   const styles = createStyles(theme);
@@ -1247,6 +1361,31 @@ export default function WorkoutTracker() {
               >
                 <Text style={styles.buttonText}>Cancel Workout</Text>
               </Pressable>
+            </View>
+
+            {/* Max Workout Toggle */}
+            <View style={styles.maxWorkoutToggle}>
+              <Pressable
+                style={[
+                  styles.maxToggleButton,
+                  isMaxWorkout && styles.maxToggleButtonActive,
+                ]}
+                onPress={() => setIsMaxWorkout(!isMaxWorkout)}
+              >
+                <Text
+                  style={[
+                    styles.maxToggleText,
+                    isMaxWorkout && styles.maxToggleTextActive,
+                  ]}
+                >
+                  {isMaxWorkout ? "🔥 MAX WORKOUT" : "Mark as Max Workout"}
+                </Text>
+              </Pressable>
+              {isMaxWorkout && (
+                <Text style={styles.maxWorkoutDescription}>
+                  This workout will be tracked for progression analysis
+                </Text>
+              )}
             </View>
           </View>
 
@@ -1519,7 +1658,7 @@ export default function WorkoutTracker() {
                             count < exerciseCount && styles.disabledButton,
                           ]}
                           onPress={() =>
-                            isWorkoutActive 
+                            isWorkoutActive
                               ? addGeneratedExercises(category, exerciseCount)
                               : generateWorkout(category, exerciseCount)
                           }

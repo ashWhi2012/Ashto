@@ -11,7 +11,10 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { ProgressionGraph } from "../../components/ProgressionGraph";
 import { useTheme } from "../../contexts/ThemeContext";
+import { useUserProfile } from "../../contexts/UserProfileContext";
+import { MaxRecord } from "../../types/workout";
 
 export interface ExerciseType {
   id: string;
@@ -41,6 +44,7 @@ const PROTECTED_CATEGORIES = ["Cardio"];
 
 export default function WorkoutTypesManager() {
   const { theme } = useTheme();
+  const { userProfile } = useUserProfile();
   const [exerciseTypes, setExerciseTypes] = useState<ExerciseType[]>([]);
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [showAddExercise, setShowAddExercise] = useState(false);
@@ -51,6 +55,12 @@ export default function WorkoutTypesManager() {
     null
   );
 
+  // Progression tracking states
+  const [showProgressionGraph, setShowProgressionGraph] = useState(false);
+  const [selectedExerciseForProgression, setSelectedExerciseForProgression] =
+    useState<string>("");
+  const [maxRecords, setMaxRecords] = useState<MaxRecord[]>([]);
+
   // Form states
   const [exerciseName, setExerciseName] = useState("");
   const [exerciseCategory, setExerciseCategory] = useState("Arms");
@@ -59,14 +69,36 @@ export default function WorkoutTypesManager() {
   useEffect(() => {
     loadExerciseTypes();
     loadCategories();
+    loadMaxRecords();
   }, []);
 
-  // Reload categories when tab becomes active (to sync with Settings changes)
+  // Reload categories and max records when tab becomes active (to sync with changes from other tabs)
   useFocusEffect(
     React.useCallback(() => {
       loadCategories();
+      loadMaxRecords();
     }, [])
   );
+
+  const loadMaxRecords = async () => {
+    try {
+      const stored = await AsyncStorage.getItem("maxRecords");
+      if (stored) {
+        setMaxRecords(JSON.parse(stored));
+      }
+    } catch (error) {
+      console.error("Error loading max records:", error);
+    }
+  };
+
+  const showProgressionForExercise = (exerciseName: string) => {
+    setSelectedExerciseForProgression(exerciseName);
+    setShowProgressionGraph(true);
+  };
+
+  const getMaxRecordsForExercise = (exerciseName: string): MaxRecord[] => {
+    return maxRecords.filter((record) => record.exerciseName === exerciseName);
+  };
 
   const loadExerciseTypes = async () => {
     try {
@@ -459,22 +491,35 @@ export default function WorkoutTypesManager() {
                     </Text>
                   )}
                 </View>
-                {!PROTECTED_CATEGORIES.includes(exercise.category) && (
-                  <View style={styles.exerciseActions}>
+                <View style={styles.exerciseActions}>
+                  {/* Progression Graph Button - Show for all non-cardio exercises */}
+                  {!PROTECTED_CATEGORIES.includes(exercise.category) && (
                     <Pressable
-                      style={styles.editButton}
-                      onPress={() => startEditExercise(exercise)}
+                      style={styles.progressionButton}
+                      onPress={() => showProgressionForExercise(exercise.name)}
                     >
-                      <Text style={styles.editButtonText}>✏️</Text>
+                      <Text style={styles.progressionButtonText}>📈</Text>
                     </Pressable>
-                    <Pressable
-                      style={styles.deleteButton}
-                      onPress={() => deleteExerciseType(exercise.id)}
-                    >
-                      <Text style={styles.deleteButtonText}>×</Text>
-                    </Pressable>
-                  </View>
-                )}
+                  )}
+
+                  {/* Edit/Delete buttons - Only show for non-protected exercises */}
+                  {!PROTECTED_CATEGORIES.includes(exercise.category) && (
+                    <>
+                      <Pressable
+                        style={styles.editButton}
+                        onPress={() => startEditExercise(exercise)}
+                      >
+                        <Text style={styles.editButtonText}>✏️</Text>
+                      </Pressable>
+                      <Pressable
+                        style={styles.deleteButton}
+                        onPress={() => deleteExerciseType(exercise.id)}
+                      >
+                        <Text style={styles.deleteButtonText}>×</Text>
+                      </Pressable>
+                    </>
+                  )}
+                </View>
               </View>
             ))}
             {categoryExercises.length === 0 && (
@@ -677,6 +722,31 @@ export default function WorkoutTypesManager() {
             >
               <Text style={styles.buttonText}>Close</Text>
             </Pressable>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Progression Graph Modal */}
+      <Modal visible={showProgressionGraph} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.progressionModalContent}>
+            <View style={styles.progressionModalHeader}>
+              <Text style={styles.modalTitle}>Weight Progression</Text>
+              <Pressable
+                style={styles.closeProgressionButton}
+                onPress={() => setShowProgressionGraph(false)}
+              >
+                <Text style={styles.closeProgressionButtonText}>×</Text>
+              </Pressable>
+            </View>
+
+            <ProgressionGraph
+              exerciseName={selectedExerciseForProgression}
+              maxRecords={getMaxRecordsForExercise(
+                selectedExerciseForProgression
+              )}
+              weightUnit={userProfile?.weightUnit || "lbs"}
+            />
           </View>
         </View>
       </Modal>
@@ -936,5 +1006,47 @@ const createStyles = (theme: any) =>
       fontSize: 10,
       fontWeight: "bold",
       color: theme.buttonText,
+    },
+    // Progression graph styles
+    progressionButton: {
+      backgroundColor: theme.accent,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    progressionButtonText: {
+      fontSize: 14,
+    },
+    progressionModalContent: {
+      backgroundColor: theme.surface,
+      borderRadius: 15,
+      width: "95%",
+      maxWidth: 600,
+      maxHeight: "90%",
+    },
+    progressionModalHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: 20,
+      paddingBottom: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: theme.textSecondary + "20",
+    },
+    closeProgressionButton: {
+      backgroundColor: theme.error,
+      width: 30,
+      height: 30,
+      borderRadius: 15,
+      justifyContent: "center",
+      alignItems: "center",
+    },
+    closeProgressionButtonText: {
+      color: theme.buttonText,
+      fontSize: 18,
+      textAlign: "center",
+      fontWeight: "bold",
     },
   });

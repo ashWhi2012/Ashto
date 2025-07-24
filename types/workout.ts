@@ -38,6 +38,17 @@ export interface WorkoutRecord {
   duration: number;
   calorieData?: CalorieData;
   notes?: string;
+  isMaxWorkout?: boolean; // Flag to indicate if this is a max effort workout
+}
+
+export interface MaxRecord {
+  id: string;
+  exerciseName: string;
+  weight: number;
+  reps: number;
+  sets: number;
+  date: string;
+  workoutId: string; // Reference to the workout this max came from
 }
 
 // Legacy interface for backward compatibility
