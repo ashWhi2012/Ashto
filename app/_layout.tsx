@@ -9,7 +9,7 @@ function ThemedRootLayout() {
   
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <StatusBar style={isDark ? "light" : "dark"} backgroundColor={theme.surface} />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false}}/>
         <Stack.Screen name="+not-found" options = {{title: "Fallback"}} />

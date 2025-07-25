@@ -76,14 +76,14 @@ export const ProgressionGraph: React.FC<ProgressionGraphProps> = ({
   const maxWeight = Math.max(...weights);
   const weightRange = maxWeight - minWeight || 1; // Avoid division by zero
 
-  // Calculate positions for data points
+  // Calculate positions for data points - closer to y-axis on left, proper padding on right
   const dataPoints = sortedRecords.map((record, index) => {
     // Handle single data point case
     const xPosition = sortedRecords.length === 1 
       ? graphWidth / 2 
-      : (index / (sortedRecords.length - 1)) * (graphWidth - 40) + 20;
+      : (index / (sortedRecords.length - 1)) * (graphWidth - 80) + 20; // Reduced left padding: 80px total, 20px left offset, 60px right
     
-    const y = graphHeight - 40 - ((record.weight - minWeight) / weightRange) * (graphHeight - 80);
+    const y = graphHeight - 60 - ((record.weight - minWeight) / weightRange) * (graphHeight - 100);
     return { x: xPosition, y, record };
   });
 
@@ -123,7 +123,7 @@ export const ProgressionGraph: React.FC<ProgressionGraphProps> = ({
                   style={[
                     styles.gridLine,
                     {
-                      top: ratio * (graphHeight - 80) + 20,
+                      top: ratio * (graphHeight - 100) + 20,
                       borderColor: theme.textSecondary + '20',
                     },
                   ]}
@@ -188,24 +188,38 @@ export const ProgressionGraph: React.FC<ProgressionGraphProps> = ({
               </View>
             ))}
           </View>
+        </View>
 
-          {/* X-axis labels */}
-          <View style={styles.xAxisContainer}>
-            {dataPoints.map((point, index) => (
-              <Text
-                key={index}
-                style={[
-                  styles.xAxisLabel,
-                  {
-                    left: point.x - 20,
-                    color: theme.textSecondary,
-                  },
-                ]}
-              >
-                {formatDate(point.record.date)}
-              </Text>
-            ))}
-          </View>
+        {/* X-axis with tick marks and labels - positioned below graph */}
+        <View style={[styles.xAxisContainer, { width: Math.max(graphWidth, 300) }]}>
+          {/* Tick marks */}
+          {dataPoints.map((point, index) => (
+            <View
+              key={`tick-${index}`}
+              style={[
+                styles.tickMark,
+                {
+                  left: point.x + 50, // Offset by y-axis width
+                  backgroundColor: theme.success,
+                },
+              ]}
+            />
+          ))}
+          {/* Date labels */}
+          {dataPoints.map((point, index) => (
+            <Text
+              key={`label-${index}`}
+              style={[
+                styles.xAxisLabel,
+                {
+                  left: point.x + 30, // Offset by y-axis width, centered under tick
+                  color: theme.textSecondary,
+                },
+              ]}
+            >
+              {formatDate(point.record.date)}
+            </Text>
+          ))}
         </View>
 
         {/* Statistics */}
@@ -345,6 +359,13 @@ const createStyles = (theme: any) =>
       fontSize: 10,
       width: 40,
       textAlign: 'center',
+      top: 12, // Position labels below tick marks
+    },
+    tickMark: {
+      position: 'absolute',
+      width: 2,
+      height: 8,
+      top: 0,
     },
     statsContainer: {
       flexDirection: 'row',

@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Train Mate",
-    "slug": "Train Mate",
+    "slug": "TrainMate",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon-fitness.png",
@@ -9,14 +9,19 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.abew.TrainMate",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon-fitness.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.abew.TrainMate"
     },
     "web": {
       "bundler": "metro",
@@ -37,6 +42,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9f66b30f-d962-441d-8e8a-5bfc0dc7ced2"
+      }
     }
   }
 }
