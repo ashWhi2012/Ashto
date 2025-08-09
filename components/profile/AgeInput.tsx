@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Keyboard,
     StyleSheet,
     Text,
     TextInput,
-    View,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { validateAge } from '../../utils/calorieCalculator';
 
@@ -68,7 +70,8 @@ export const AgeInput: React.FC<AgeInputProps> = ({
   const displayError = error || validationError;
 
   return (
-    <View style={styles.container} testID={testID}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container} testID={testID}>
       <Text style={styles.label}>{label}</Text>
       
       <TextInput
@@ -82,6 +85,7 @@ export const AgeInput: React.FC<AgeInputProps> = ({
         placeholder={placeholder}
         keyboardType="numeric"
         returnKeyType="done"
+        onSubmitEditing={Keyboard.dismiss}
         maxLength={3} // Maximum 3 digits for age
         accessibilityLabel={`${label} input`}
         accessibilityHint="Enter your age in years, between 13 and 120"
@@ -98,7 +102,8 @@ export const AgeInput: React.FC<AgeInputProps> = ({
           {displayError}
         </Text>
       )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 

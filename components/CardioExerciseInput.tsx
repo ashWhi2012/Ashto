@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import {
+  Keyboard,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { Exercise } from '../types/workout';
@@ -37,7 +39,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
   const styles = createStyles(theme);
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.exerciseName}>{exercise.name}</Text>
         {!isReadOnly && (
@@ -58,6 +61,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
             keyboardType="numeric"
             placeholder="30"
             editable={!isReadOnly}
+            returnKeyType="next"
+            blurOnSubmit={false}
           />
         </View>
         <View style={styles.inputGroup}>
@@ -69,6 +74,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
             keyboardType="numeric"
             placeholder="5"
             editable={!isReadOnly}
+            returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
           />
         </View>
       </View>
@@ -101,6 +108,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
                 keyboardType="numeric"
                 placeholder="6.0"
                 editable={!isReadOnly}
+                returnKeyType="next"
+                blurOnSubmit={false}
               />
             </View>
             <View style={styles.inputGroup}>
@@ -129,6 +138,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
               keyboardType="numeric"
               placeholder="0 (flat), 5 (uphill), -3 (downhill)"
               editable={!isReadOnly}
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <Text style={styles.helperText}>
               Positive for uphill, negative for downhill
@@ -147,6 +158,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
               keyboardType="numeric"
               placeholder="60 (for 1-minute intervals)"
               editable={!isReadOnly}
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
             <Text style={styles.helperText}>
               For interval training - duration of each interval
@@ -175,7 +188,8 @@ export const CardioExerciseInput: React.FC<CardioExerciseInputProps> = ({
           )}
         </View>
       )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 

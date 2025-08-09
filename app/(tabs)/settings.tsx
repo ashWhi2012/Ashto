@@ -1,14 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    Keyboard,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View
 } from "react-native";
 import { AgeInput } from '../../components/profile/AgeInput';
 import { HeightInput } from '../../components/profile/HeightInput';
@@ -426,7 +428,8 @@ export default function Settings() {
   const styles = createStyles(theme);
 
   return (
-    <ScrollView style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <ScrollView style={styles.container}>
       <Text style={styles.title}>Settings</Text>
 
       {/* Personal Information Section */}
@@ -739,6 +742,8 @@ export default function Settings() {
               value={categoryName}
               onChangeText={setCategoryName}
               autoFocus
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
 
             <View style={styles.modalButtons}>
@@ -765,7 +770,8 @@ export default function Settings() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </TouchableWithoutFeedback>
   );
 }
 

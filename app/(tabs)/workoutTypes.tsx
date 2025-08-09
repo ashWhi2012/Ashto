@@ -2,14 +2,16 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
-  Alert,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    Keyboard,
+    Modal,
+    Pressable,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableWithoutFeedback,
+    View
 } from "react-native";
 import { ProgressionGraph } from "../../components/ProgressionGraph";
 import { useTheme } from "../../contexts/ThemeContext";
@@ -450,7 +452,8 @@ export default function WorkoutTypesManager() {
   const styles = createStyles(theme);
 
   return (
-    <ScrollView style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <ScrollView style={styles.container}>
       <Text style={styles.title}>Workout Manager</Text>
 
       <Pressable
@@ -542,6 +545,8 @@ export default function WorkoutTypesManager() {
               placeholder="Exercise name (e.g., Bicep Curls)"
               value={exerciseName}
               onChangeText={setExerciseName}
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
 
             <Text style={styles.inputLabel}>Category:</Text>
@@ -609,6 +614,8 @@ export default function WorkoutTypesManager() {
               placeholder="Exercise name"
               value={exerciseName}
               onChangeText={setExerciseName}
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
 
             <Text style={styles.inputLabel}>Category:</Text>
@@ -750,7 +757,8 @@ export default function WorkoutTypesManager() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </TouchableWithoutFeedback>
   );
 }
 

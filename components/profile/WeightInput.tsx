@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Keyboard,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
+    TouchableWithoutFeedback,
     View
 } from 'react-native';
 import { kgToLbs, lbsToKg, validateWeight } from '../../utils/calorieCalculator';
@@ -101,7 +103,8 @@ export const WeightInput: React.FC<WeightInputProps> = ({
   const displayError = error || validationError;
 
   return (
-    <View style={styles.container} testID={testID}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container} testID={testID}>
       <Text style={styles.label}>{label}</Text>
       
       <View style={styles.inputContainer}>
@@ -116,6 +119,7 @@ export const WeightInput: React.FC<WeightInputProps> = ({
           placeholder={placeholder}
           keyboardType="numeric"
           returnKeyType="done"
+          onSubmitEditing={Keyboard.dismiss}
           accessibilityLabel={`${label} input`}
           accessibilityHint={`Enter your weight in ${unit}`}
           testID={`${testID}-field`}
@@ -158,7 +162,8 @@ export const WeightInput: React.FC<WeightInputProps> = ({
           {displayError}
         </Text>
       )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 

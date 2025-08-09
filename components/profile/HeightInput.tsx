@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
+  Keyboard,
     StyleSheet,
     Text,
     TextInput,
     TouchableOpacity,
-    View,
+    TouchableWithoutFeedback,
+    View
 } from 'react-native';
 import { cmToFeetInches, feetInchesToCm, validateHeight } from '../../utils/calorieCalculator';
 
@@ -176,7 +178,8 @@ export const HeightInput: React.FC<HeightInputProps> = ({
   const displayError = error || validationError;
 
   return (
-    <View style={styles.container} testID={testID}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container} testID={testID}>
       <Text style={styles.label}>{label}</Text>
       
       <View style={styles.inputContainer}>
@@ -192,6 +195,7 @@ export const HeightInput: React.FC<HeightInputProps> = ({
             placeholder={placeholder}
             keyboardType="numeric"
             returnKeyType="done"
+            onSubmitEditing={Keyboard.dismiss}
             accessibilityLabel={`${label} input in centimeters`}
             accessibilityHint="Enter your height in centimeters"
             testID={`${testID}-cm-field`}
@@ -231,6 +235,7 @@ export const HeightInput: React.FC<HeightInputProps> = ({
                 placeholder="0"
                 keyboardType="numeric"
                 returnKeyType="done"
+                onSubmitEditing={Keyboard.dismiss}
                 accessibilityLabel="Height inches input"
                 accessibilityHint="Enter inches portion of your height, 0 to 11"
                 testID={`${testID}-inches-field`}
@@ -277,7 +282,8 @@ export const HeightInput: React.FC<HeightInputProps> = ({
           {displayError}
         </Text>
       )}
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 };
 

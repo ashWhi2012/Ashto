@@ -3,13 +3,15 @@ import { useFocusEffect } from "@react-navigation/native";
 import React, { useEffect, useState } from "react";
 import {
   Alert,
+  Keyboard,
   Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
+  TouchableWithoutFeedback,
+  View
 } from "react-native";
 import { CalorieCalculationErrorBoundary } from "../../components/CalorieCalculationErrorBoundary";
 import { CardioExerciseInput } from "../../components/CardioExerciseInput";
@@ -1264,7 +1266,8 @@ export default function WorkoutTracker() {
   const styles = createStyles(theme);
 
   return (
-    <View style={styles.container}>
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.container}>
       <Text style={styles.title}>Fitness Tracker</Text>
 
       {!isWorkoutActive ? (
@@ -1455,6 +1458,8 @@ export default function WorkoutTracker() {
               placeholder="Exercise name"
               value={exerciseName}
               onChangeText={setExerciseName}
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <TextInput
               style={styles.input}
@@ -1462,6 +1467,8 @@ export default function WorkoutTracker() {
               value={sets}
               onChangeText={setSets}
               keyboardType="numeric"
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <TextInput
               style={styles.input}
@@ -1469,6 +1476,8 @@ export default function WorkoutTracker() {
               value={reps}
               onChangeText={setReps}
               keyboardType="numeric"
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <TextInput
               style={styles.input}
@@ -1476,6 +1485,8 @@ export default function WorkoutTracker() {
               value={weight}
               onChangeText={setWeight}
               keyboardType="numeric"
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
 
             <View style={styles.modalButtons}>
@@ -1730,6 +1741,8 @@ export default function WorkoutTracker() {
               value={sets}
               onChangeText={setSets}
               keyboardType="numeric"
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <TextInput
               style={styles.input}
@@ -1737,6 +1750,8 @@ export default function WorkoutTracker() {
               value={reps}
               onChangeText={setReps}
               keyboardType="numeric"
+              returnKeyType="next"
+              blurOnSubmit={false}
             />
             <TextInput
               style={styles.input}
@@ -1744,6 +1759,8 @@ export default function WorkoutTracker() {
               value={weight}
               onChangeText={setWeight}
               keyboardType="numeric"
+              returnKeyType="done"
+              onSubmitEditing={Keyboard.dismiss}
             />
 
             <View style={styles.modalButtons}>
@@ -1770,6 +1787,7 @@ export default function WorkoutTracker() {
           </View>
         </View>
       </Modal>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
